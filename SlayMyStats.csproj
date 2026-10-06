@@ -1,0 +1,58 @@
+<Project Sdk="Godot.NET.Sdk/4.5.1" InitialTargets="CheckDependencyPaths">
+    <Import Project=".\Sts2PathDiscovery.props"/>
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>true</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <AppOutputBase>$(MSBuildProjectDirectory)\</AppOutputBase>
+        <PathMap>$(AppOutputBase)=.\</PathMap>
+        <GodotDisabledSourceGenerators>GodotPluginsInitializer</GodotDisabledSourceGenerators>
+
+        <!-- Mods are built for all platforms (MSIL) while the local game is platform-specific. -->
+        <NoWarn>$(NoWarn);MSB3270</NoWarn>
+    </PropertyGroup>
+
+    <!-- The game's own assemblies. Private=false: they are already loaded, so never ship copies. -->
+    <ItemGroup Condition="Exists('$(Sts2DataDir)')">
+        <Reference Include="0Harmony">
+            <HintPath>$(Sts2DataDir)/0Harmony.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="sts2">
+            <HintPath>$(Sts2DataDir)/sts2.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="Steamworks.NET">
+            <HintPath>$(Sts2DataDir)/Steamworks.NET.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include=".gitignore"/>
+        <None Include="SlayMyStats.json"/>
+        <None Include="project.godot"/>
+        <!-- The probe is its own project; it borrows this one's uploader, not the other way round. -->
+        <Compile Remove="Probe/**"/>
+    </ItemGroup>
+
+    <Target Name="CheckDependencyPaths">
+        <Error
+                Text=" Slay the Spire 2 data not found at path '$(Sts2DataDir)'"
+                Condition="'$(Sts2DataDir)' == '' or !Exists('$(Sts2DataDir)')"/>
+    </Target>
+
+    <!-- Installing is opt-in (-p:InstallMod=true): a loaded mod moves the game's saves to a separate
+         "modded" folder, so a plain build must not touch the game. -->
+    <Target Name="CopyToModsFolderOnBuild" AfterTargets="PostBuildEvent" Condition="'$(InstallMod)' == 'true'">
+        <Message Text="Copying .dll and .json to mods folder." Importance="high"/>
+        <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"/>
+        <Copy SourceFiles="$(AssemblyName).json" DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"/>
+        <!-- Your own config (not in git) says where to upload. Without one the mod loads and sends nothing. -->
+        <Copy SourceFiles="$(AssemblyName).config.json" DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"
+              Condition="Exists('$(AssemblyName).config.json')"/>
+        <Warning Text="No $(AssemblyName).config.json here, so the installed mod won't upload. Copy $(AssemblyName).config.example.json and set the endpoint."
+                 Condition="!Exists('$(AssemblyName).config.json')"/>
+    </Target>
+</Project>

@@ -1,0 +1,4 @@
+{
+  "enabled": true,
+  "endpoint": "https://REPLACE-ME.lambda-url.us-west-2.on.aws/mod"
+}

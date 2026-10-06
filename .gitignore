@@ -1,0 +1,14 @@
+.godot/
+bin/
+obj/
+SlayMyStats.config.json
+/android/
+.git/
+.idea/
+.vs/
+publish/
+Properties/
+packages/
+.editorconfig
+*.user
+Directory.Build.props

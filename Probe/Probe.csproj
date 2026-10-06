@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <Import Project="..\Sts2PathDiscovery.props"/>
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>true</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>SlayMyStats.Probe</RootNamespace>
+        <AssemblyName>SlayMyStatsProbe</AssemblyName>
+        <NoWarn>$(NoWarn);MSB3270</NoWarn>
+    </PropertyGroup>
+
+    <!-- The very code the mod runs, so what the probe proves about uploading holds for the mod. -->
+    <ItemGroup>
+        <Compile Include="..\SlayMyStatsCode\Uploader.cs" Link="Uploader.cs"/>
+        <Compile Include="..\SlayMyStatsCode\SteamTicket.cs" Link="SteamTicket.cs"/>
+    </ItemGroup>
+
+    <!-- Outside the game nothing is loaded yet, so the probe carries its own copies of the game's Steam libraries. -->
+    <ItemGroup>
+        <Reference Include="Steamworks.NET">
+            <HintPath>$(Sts2DataDir)/Steamworks.NET.dll</HintPath>
+        </Reference>
+        <None Include="$(Sts2DataDir)/steam_api64.dll" CopyToOutputDirectory="PreserveNewest" Visible="false"/>
+        <None Include="steam_appid.txt" CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
+</Project>

@@ -1,0 +1,12 @@
+{
+  "id": "SlayMyStats",
+  "name": "Slay My Stats",
+  "author": "JesseJ",
+  "description": "Uploads each finished run to slay-my-stats. Prototype, for allowlisted players.",
+  "version": "v0.0.1",
+  "min_game_version": "0.107.0",
+  "has_pck": false,
+  "has_dll": true,
+  "dependencies": [],
+  "affects_gameplay": false
+}
