@@ -65,15 +65,22 @@ This builds `SlayMyStats.dll` and changes nothing in the game.
 
 ## Configure
 
-Copy `SlayMyStats.config.example.json` to `SlayMyStats.config.json` (not in git) and set the endpoint: the
-site's `IngestFunctionUrl` followed by `mod`.
+Copy `SlayMyStats.config.example.json` to `SlayMyStats.config.json` (not in git) and set the endpoints: each
+site's `IngestFunctionUrl` followed by `mod`, under a short name (a-z, 0-9, `-`).
 
 ```json
 {
   "enabled": true,
-  "endpoint": "https://xxxxxxxx.lambda-url.us-west-2.on.aws/mod"
+  "endpoints": {
+    "prod": "https://xxxxxxxx.lambda-url.us-west-2.on.aws/mod",
+    "gamma": "https://yyyyyyyy.lambda-url.us-west-2.on.aws/mod"
+  }
 }
 ```
+
+Every run goes to every endpoint. Each has its own queue (`%APPDATA%\SlayTheSpire2\SlayMyStats\queue\<name>`)
+and its own retries, and its log lines start with `[<name>]`, so one site being down or refusing doesn't hold
+back the others. Each site needs your Steam ID on its own allowlist.
 
 With no config file, or `"enabled": false`, the mod loads and sends nothing.
 
@@ -83,15 +90,14 @@ With no config file, or `"enabled": false`, the mod loads and sends nothing.
 .\install.ps1
 ```
 
-does the configure step for gamma (it looks the endpoint up from AWS, or takes `-Endpoint <url>`) and then
-installs. By hand,
+does the configure step for prod and gamma (it looks both endpoints up from AWS) and then installs. By hand,
 
 ```
 dotnet build -p:InstallMod=true
 ```
 
 copies the `.dll`, `SlayMyStats.json` and your config to `<game>\mods\SlayMyStats\`. Start the game and look
-for `Slay My Stats loaded. Uploads are on.` in `%APPDATA%\SlayTheSpire2\logs\godot.log`.
+for `Slay My Stats loaded. Uploads are on, to prod and gamma.` in `%APPDATA%\SlayTheSpire2\logs\godot.log`.
 
 To uninstall, delete `<game>\mods\SlayMyStats\`.
 

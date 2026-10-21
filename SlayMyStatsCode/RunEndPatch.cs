@@ -21,8 +21,7 @@ public static class RunEndPatch
         // A failure here must never reach the game's save code.
         try
         {
-            Uploader? uploader = MainFile.Uploader;
-            if (uploader == null) return;
+            if (MainFile.Uploaders.Count == 0) return;
 
             // Only turning the run into text happens here, on the game's thread, while the run can't change.
             // Writing it to the queue and sending it are left to a background task.
@@ -30,18 +29,21 @@ public static class RunEndPatch
             JsonArray mods = LoadedMods();
             MainFile.Logger.Info($"Run ended: {history.StartTime}.run win={history.Win} abandoned={history.WasAbandoned}. Queuing it for upload.");
 
-            _ = Task.Run(async () =>
+            foreach (Uploader uploader in MainFile.Uploaders)
             {
-                try
+                _ = Task.Run(async () =>
                 {
-                    uploader.Enqueue(json, mods);
-                    await uploader.DrainAsync();
-                }
-                catch (Exception e)
-                {
-                    MainFile.Logger.Error($"Couldn't queue the run: {e}");
-                }
-            });
+                    try
+                    {
+                        uploader.Enqueue(json, mods);
+                        await uploader.DrainAsync();
+                    }
+                    catch (Exception e)
+                    {
+                        MainFile.Logger.Error($"Couldn't queue the run: {e}");
+                    }
+                });
+            }
         }
         catch (Exception e)
         {

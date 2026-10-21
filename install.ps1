@@ -1,26 +1,25 @@
-# Builds the mod and copies it into the game's mods folder, set up to upload to gamma.
+# Builds the mod and copies it into the game's mods folder, set up to upload every run to both prod and gamma.
 #
-#   .\install.ps1                      look up gamma's upload address from AWS
-#   .\install.ps1 -Endpoint <url>      use this address instead (the ingest Function URL followed by "mod")
+#   .\install.ps1                      look up each site's upload address from AWS
 #
 # With a mod loaded the game keeps its saves in a separate "modded" folder. To go back, delete
 # <game>\mods\SlayMyStats.
-param([string]$Endpoint)
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-if (-not $Endpoint) {
-    $url = aws cloudformation describe-stacks --stack-name SlayMyStatsGammaStack --output text `
+$endpoints = [ordered]@{}
+foreach ($site in @(@{ name = "prod"; stack = "SlayMyStatsStack" }, @{ name = "gamma"; stack = "SlayMyStatsGammaStack" })) {
+    $url = aws cloudformation describe-stacks --stack-name $site.stack --output text `
         --query "Stacks[0].Outputs[?OutputKey=='IngestFunctionUrl'].OutputValue"
     if ($LASTEXITCODE -ne 0 -or "$url" -notlike "https://*") {
-        throw "Couldn't read gamma's IngestFunctionUrl from AWS. Sign in to AWS, or pass -Endpoint."
+        throw "Couldn't read $($site.name)'s IngestFunctionUrl from AWS. Sign in to AWS, or write SlayMyStats.config.json by hand."
     }
-    $Endpoint = "$($url.Trim().TrimEnd('/'))/mod"
+    $endpoints[$site.name] = "$($url.Trim().TrimEnd('/'))/mod"
+    Write-Host "Uploading to $($site.name): $($endpoints[$site.name])"
 }
 
-[ordered]@{ enabled = $true; endpoint = $Endpoint } | ConvertTo-Json | Set-Content SlayMyStats.config.json
-Write-Host "Uploading to $Endpoint"
+[ordered]@{ enabled = $true; endpoints = $endpoints } | ConvertTo-Json | Set-Content SlayMyStats.config.json
 
 dotnet build -p:InstallMod=true
 if ($LASTEXITCODE -ne 0) { throw "Build failed; nothing was installed." }

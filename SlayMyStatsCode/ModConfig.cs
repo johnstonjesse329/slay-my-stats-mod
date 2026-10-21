@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace SlayMyStats.SlayMyStatsCode;
 
@@ -13,9 +14,13 @@ public sealed class ModConfig
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; } = true;
 
-    /// <summary>The ingest function's mod address, e.g. https://example.lambda-url.us-west-2.on.aws/mod</summary>
-    [JsonPropertyName("endpoint")]
-    public string Endpoint { get; set; } = "";
+    /// <summary>
+    /// Where every run goes, by name: each one an ingest function's mod address, e.g.
+    /// "prod": "https://example.lambda-url.us-west-2.on.aws/mod". The name marks that site's lines in the log
+    /// and names its queue folder, so it is kept to a-z, 0-9 and "-".
+    /// </summary>
+    [JsonPropertyName("endpoints")]
+    public Dictionary<string, string> Endpoints { get; set; } = [];
 
     /// <summary>The config in this folder, or null (with the reason logged) if uploads should stay off.</summary>
     public static ModConfig? Load(string folder, Action<string> log)
@@ -44,9 +49,20 @@ public sealed class ModConfig
             return null;
         }
 
-        if (!Uri.TryCreate(config.Endpoint, UriKind.Absolute, out Uri? endpoint) || endpoint.Scheme is not ("https" or "http"))
+        // One bad entry leaves the others sending.
+        foreach ((string name, string url) in config.Endpoints.ToList())
         {
-            log($"{FileName} has no usable \"endpoint\"; uploads are off.");
+            if (!Regex.IsMatch(name, "^[a-z0-9-]+$") ||
+                !Uri.TryCreate(url, UriKind.Absolute, out Uri? endpoint) || endpoint.Scheme is not ("https" or "http"))
+            {
+                log($"Skipping endpoint \"{name}\" in {FileName}: the name or address isn't usable.");
+                config.Endpoints.Remove(name);
+            }
+        }
+
+        if (config.Endpoints.Count == 0)
+        {
+            log($"{FileName} has no usable \"endpoints\"; uploads are off.");
             return null;
         }
 
