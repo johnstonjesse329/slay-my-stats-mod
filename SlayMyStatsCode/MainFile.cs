@@ -16,35 +16,39 @@ public partial class MainFile : Node
 
     public static MegaCrit.Sts2.Core.Logging.Logger Logger { get; } = new(ModId, MegaCrit.Sts2.Core.Logging.LogType.Generic);
 
-    /// <summary>Null when uploads are off: no config file, or turned off in it.</summary>
-    public static Uploader? Uploader { get; private set; }
+    /// <summary>One per endpoint in the config, each with its own queue. Empty when uploads are off.</summary>
+    public static List<Uploader> Uploaders { get; } = [];
 
     public static void Initialize()
     {
         Harmony harmony = new(ModId);
         harmony.PatchAll(Assembly.GetExecutingAssembly());
 
+        List<string> sites = [];
+
         // Nothing below may stop the game from loading.
         try
         {
             string modDir = ModDir();
-            Action<string> log = message => Logger.Info(message);
-            ModConfig? config = ModConfig.Load(modDir, log);
-            if (config != null)
+            ModConfig? config = ModConfig.Load(modDir, message => Logger.Info(message));
+            foreach ((string name, string url) in config?.Endpoints ?? [])
             {
-                string queueDir = Path.Combine(OS.GetUserDataDir(), ModId, "queue");
-                Uploader = new Uploader(new Uri(config.Endpoint), queueDir, SteamTicket.GetAsync, log, Version(modDir));
-
-                // Runs a previous session couldn't send go out now.
-                _ = Task.Delay(StartupDelay).ContinueWith(_ => Uploader.Kick());
+                // Separate queues, so a site that is down or says no never holds runs back from the others.
+                string queueDir = Path.Combine(OS.GetUserDataDir(), ModId, "queue", name);
+                Uploaders.Add(new Uploader(new Uri(url), queueDir, SteamTicket.GetAsync,
+                    message => Logger.Info($"[{name}] {message}"), Version(modDir)));
+                sites.Add(name);
             }
+
+            // Runs a previous session couldn't send go out now.
+            _ = Task.Delay(StartupDelay).ContinueWith(_ => Uploaders.ForEach(u => u.Kick()));
         }
         catch (Exception e)
         {
             Logger.Error($"Uploads are off: {e}");
         }
 
-        Logger.Info($"Slay My Stats loaded. Uploads are {(Uploader == null ? "off" : "on")}.");
+        Logger.Info($"Slay My Stats loaded. Uploads are {(Uploaders.Count == 0 ? "off" : $"on, to {string.Join(" and ", sites)}")}.");
     }
 
     /// <summary>The folder this mod was installed to: where its .dll, manifest and config sit.</summary>
