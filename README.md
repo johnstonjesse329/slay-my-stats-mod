@@ -32,6 +32,14 @@ That is why a plain build doesn't touch the game: installing is its own step.
 5. The mod uploads the queued runs there. From then on it is the same pipeline as an upload from the
    website.
 
+Runs that ended without the mod (before you installed it, while it was turned off, or played unmodded) are
+backfilled. Once per launch, 30 seconds in, the mod asks each site which runs your profile has (the
+`/mod/runs` path, checked the same way, using up no upload). It then queues the ones it's missing from every
+history folder of your Steam account, the normal profiles and the `modded` ones, as many as the queue has
+room for; the rest go next launch. Those are sent without the `slay_my_stats_mod` key, like a run uploaded
+from files, since the mod didn't see them played. Each site's queue folder keeps a `sent.txt` of what it has
+sent, so a run the site took but didn't keep isn't sent again every launch.
+
 There is no password or key in the mod. A Steam ticket is short-lived and only says "this Steam account is
 running Slay the Spire 2 right now"; the mod never writes it to the log.
 
@@ -45,7 +53,7 @@ In case the mod goes haywire, both ends hold it back.
 
 | | Mod | Site |
 |---|---|---|
-| How often | 20 requests an hour | 5 s apart, 200 a day per Steam account |
+| How often | 20 requests an hour, the backfill check included | 5 s apart, 200 uploads a day per Steam account |
 | How much | 50 runs per upload, 200 runs queued | 2 MB per upload |
 | On failure | Retries after 10 s, 1 min, 5 min, then waits for the next run or restart | |
 | On "no" | A refusal (not on the allowlist, bad ticket) stops uploads until the game restarts; runs stay queued | Alarm if requests or refusals pile up |
@@ -114,6 +122,9 @@ Probe\bin\Debug\net9.0\SlayMyStatsProbe.exe ticket
 
 # Upload runs exactly as the mod would, with a real Steam ticket.
 Probe\bin\Debug\net9.0\SlayMyStatsProbe.exe upload <endpoint> <file.run>...
+
+# Backfill as the mod does at launch: ask the site what it has, upload the rest of the history.
+Probe\bin\Debug\net9.0\SlayMyStatsProbe.exe backfill <endpoint> %APPDATA%\SlayTheSpire2\steam
 
 # Against a local dev server only: skip Steam and claim an id with a made-up ticket.
 Probe\bin\Debug\net9.0\SlayMyStatsProbe.exe upload http://127.0.0.1:8000/api/ingest/mod <file.run> --as <steamid>

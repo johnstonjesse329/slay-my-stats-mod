@@ -13,6 +13,11 @@ namespace SlayMyStats.Probe;
 ///       Queue the given runs and upload them, exactly as the mod would at the end of a run.
 ///       --as skips Steam and claims that id with a made-up ticket, which only a local dev server accepts.
 ///
+///   SlayMyStatsProbe backfill &lt;endpoint&gt; &lt;steam folder&gt;
+///       Ask the site which runs it has, queue the rest from the history under the steam folder (the game's
+///       %APPDATA%\SlayTheSpire2\steam), and upload them, as the mod does at launch. The queue and its record of
+///       what was sent stay in %TEMP%\SlayMyStatsProbe\backfill-&lt;host&gt; between tries.
+///
 /// Anything that asks Steam for a ticket needs Steam running, and shows you as playing the game while it runs.
 /// </summary>
 public static class Program
@@ -47,8 +52,15 @@ public static class Program
                 : await WithSteam(() => Upload(endpoint, rest, SteamTicket.GetAsync));
         }
 
+        if (args is ["backfill", var url, var steamDir])
+        {
+            Uri endpoint = new(url);
+            return await WithSteam(() => Backfill(endpoint, steamDir));
+        }
+
         Console.Error.WriteLine("usage: SlayMyStatsProbe ticket\n" +
-                                "       SlayMyStatsProbe upload <endpoint> <file.run>... [--as <steamid>]");
+                                "       SlayMyStatsProbe upload <endpoint> <file.run>... [--as <steamid>]\n" +
+                                "       SlayMyStatsProbe backfill <endpoint> <steam folder>");
         return 2;
     }
 
@@ -62,6 +74,18 @@ public static class Program
 
         int left = Directory.GetFiles(queueDir, "*.json").Length;
         Console.WriteLine(left == 0 ? "Queue is empty: everything was sent." : $"{left} run(s) still queued in {queueDir}.");
+        return left == 0 ? 0 : 1;
+    }
+
+    private static async Task<int> Backfill(Uri endpoint, string steamDir)
+    {
+        string queueDir = Path.Combine(Path.GetTempPath(), "SlayMyStatsProbe", $"backfill-{endpoint.Host.Split('.')[0]}");
+        Uploader uploader = new(endpoint, queueDir, SteamTicket.GetAsync, Console.WriteLine, "probe");
+        uploader.Backfill(steamDir);
+        await uploader.DrainAsync();
+
+        int left = Directory.GetFiles(queueDir, "*.json").Length;
+        Console.WriteLine(left == 0 ? "Queue is empty." : $"{left} run(s) still queued in {queueDir}.");
         return left == 0 ? 0 : 1;
     }
 
