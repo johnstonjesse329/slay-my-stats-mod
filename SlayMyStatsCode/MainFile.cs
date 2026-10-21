@@ -40,8 +40,13 @@ public partial class MainFile : Node
                 sites.Add(name);
             }
 
-            // Runs a previous session couldn't send go out now.
-            _ = Task.Delay(StartupDelay).ContinueWith(_ => Uploaders.ForEach(u => u.Kick()));
+            // Runs a previous session couldn't send go out now, with any the site is missing from the history.
+            string steamDir = Path.Combine(OS.GetUserDataDir(), "steam");
+            _ = Task.Delay(StartupDelay).ContinueWith(_ => Uploaders.ForEach(u =>
+            {
+                u.Backfill(steamDir);
+                u.Kick();
+            }));
         }
         catch (Exception e)
         {

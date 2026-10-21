@@ -14,6 +14,9 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// One upload is the same two steps the site's upload page takes: ask the ingest endpoint for an upload URL
 /// (proving who is playing with a Steam ticket instead of a browser sign-in), then POST the gzip'd runs, one
 /// JSON object per line, straight to that URL.
+///
+/// Runs that ended without the mod (before it was installed, or while it was turned off) are backfilled: once
+/// per launch the uploader asks the site which runs it already has, and queues the rest from the game's history.
 /// </summary>
 public sealed class Uploader
 {
@@ -32,6 +35,10 @@ public sealed class Uploader
 
     private enum Outcome { Sent, Retry, Stop }
 
+    // Every run this uploader has sent, one start time per line, kept beside the queue. A run the site took but
+    // didn't keep (one its parser rejects) is never backfilled again because of it.
+    private const string SentFile = "sent.txt";
+
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
     private readonly Uri _endpoint;
@@ -44,6 +51,7 @@ public sealed class Uploader
     private int _running;
     private int _kickRequested;
     private bool _stopped;
+    private string? _backfillFrom;
 
     public Uploader(Uri endpoint, string queueDir, Func<Task<Ticket>> getTicket, Action<string> log, string modVersion)
     {
@@ -60,16 +68,31 @@ public sealed class Uploader
     /// is what the server reads, with a note that it came from this mod and which mods were loaded: the game's
     /// own file doesn't say.
     /// </summary>
-    public void Enqueue(string runJson, JsonArray mods)
+    /// <param name="mods">The loaded mods, or null for a run from history, which went unwatched: it is sent like a
+    /// run uploaded from files, saying nothing about mods.</param>
+    public void Enqueue(string runJson, JsonArray? mods)
     {
         JsonObject run = JsonNode.Parse(runJson)?.AsObject() ?? throw new JsonException("not a run");
-        run["slay_my_stats_mod"] = new JsonObject { ["version"] = _modVersion, ["mods"] = mods.DeepClone() };
+        if (mods != null)
+        {
+            run["slay_my_stats_mod"] = new JsonObject { ["version"] = _modVersion, ["mods"] = mods.DeepClone() };
+        }
+
         string name = run["start_time"]?.ToString() ?? Guid.NewGuid().ToString("N");
 
         // Written whole or not at all, so a crash mid-write can't leave half a run to be sent.
         string path = Path.Combine(_queueDir, $"{name}.json");
         File.WriteAllText(path + ".tmp", run.ToJsonString());
         File.Move(path + ".tmp", path, overwrite: true);
+    }
+
+    /// <summary>
+    /// Queue the runs under <paramref name="steamDir"/> (the game's "steam" folder, one folder per account) that
+    /// the site doesn't have. Done at the start of the next pass through the queue, ahead of sending it.
+    /// </summary>
+    public void Backfill(string steamDir)
+    {
+        _backfillFrom = steamDir;
     }
 
     /// <summary>Start sending the queue, if it isn't being sent already. Returns at once.</summary>
@@ -90,6 +113,19 @@ public sealed class Uploader
 
         try
         {
+            if (Interlocked.Exchange(ref _backfillFrom, null) is { } steamDir)
+            {
+                try
+                {
+                    await BackfillAsync(steamDir);
+                }
+                catch (Exception e) when (e is HttpRequestException or TaskCanceledException or TicketException or IOException or JsonException)
+                {
+                    // Only the backfill waits for the next launch; the queue still goes now.
+                    _log($"Couldn't check the site for missing runs ({e.GetType().Name}: {e.Message}). Trying again next launch.");
+                }
+            }
+
             int attempt = 0;
             while (!_stopped)
             {
@@ -135,6 +171,75 @@ public sealed class Uploader
         {
             Interlocked.Exchange(ref _running, 0);
             if (Interlocked.Exchange(ref _kickRequested, 0) == 1 && !_stopped) Kick();
+        }
+    }
+
+    /// <summary>
+    /// The runs in every history folder of the playing account, normal and modded profiles alike, that the site
+    /// doesn't have and this uploader hasn't sent or queued, up to what the queue has room for; the rest go next
+    /// launch. A history file is named by the run's start time, which is also how the site tells runs apart.
+    /// </summary>
+    private async Task BackfillAsync(string steamDir)
+    {
+        (string steamId, HashSet<long> have) = await SiteRunsAsync();
+
+        string sentPath = Path.Combine(_queueDir, SentFile);
+        HashSet<string> skip = File.Exists(sentPath) ? File.ReadAllLines(sentPath).ToHashSet() : [];
+        string[] queued = Directory.GetFiles(_queueDir, "*.json");
+        skip.UnionWith(queued.Select(f => Path.GetFileNameWithoutExtension(f)));
+
+        string accountDir = Path.Combine(steamDir, steamId);
+        List<(long Start, string Path)> missing = (Directory.Exists(accountDir)
+                ? Directory.GetFiles(accountDir, "*.run", SearchOption.AllDirectories)
+                : [])
+            .Where(f => Path.GetFileName(Path.GetDirectoryName(f)) == "history")
+            .Select(f => (Ok: long.TryParse(Path.GetFileNameWithoutExtension(f), out long start), Start: start, Path: f))
+            .Where(r => r.Ok && !have.Contains(r.Start) && !skip.Contains(r.Start.ToString()))
+            .DistinctBy(r => r.Start)
+            .OrderBy(r => r.Start)
+            .Select(r => (r.Start, r.Path))
+            .ToList();
+
+        int room = Math.Max(0, MaxQueuedRuns - queued.Length);
+        int added = 0;
+        foreach ((long _, string path) in missing.Take(room))
+        {
+            try
+            {
+                Enqueue(File.ReadAllText(path), mods: null);
+                added++;
+            }
+            catch (JsonException)
+            {
+                _log($"Skipping {Path.GetFileName(path)}: it isn't a readable run.");
+            }
+        }
+
+        _log(missing.Count == 0
+            ? $"The site has all {have.Count} run(s) it should; nothing to backfill."
+            : $"The site is missing {missing.Count} run(s) from the game's history; queued {added}" +
+              (missing.Count > room ? ", the rest next launch." : "."));
+    }
+
+    /// <summary>Who is playing, and the start time of every run the site already has for them.</summary>
+    private async Task<(string SteamId, HashSet<long> Runs)> SiteRunsAsync()
+    {
+        Ticket ticket = await _getTicket();
+        try
+        {
+            _requests.Add(DateTime.UtcNow);
+            string ask = new JsonObject { ["steamId"] = ticket.SteamId, ["ticket"] = ticket.Hex }.ToJsonString();
+            Uri runsEndpoint = new(_endpoint.AbsoluteUri.TrimEnd('/') + "/runs");
+            using HttpResponseMessage answer = await Http.PostAsync(runsEndpoint, new StringContent(ask, Encoding.UTF8, "application/json"));
+            string text = await answer.Content.ReadAsStringAsync();
+            if (!answer.IsSuccessStatusCode) throw new HttpRequestException($"{(int)answer.StatusCode} {Truncate(text)}");
+
+            HashSet<long> runs = JsonNode.Parse(text)!["runs"]!.AsArray().Select(n => n!.GetValue<long>()).ToHashSet();
+            return (ticket.SteamId, runs);
+        }
+        finally
+        {
+            ticket.Release();
         }
     }
 
@@ -199,6 +304,7 @@ public sealed class Uploader
                 return Outcome.Retry;
             }
 
+            File.AppendAllLines(Path.Combine(_queueDir, SentFile), batch.Select(p => Path.GetFileNameWithoutExtension(p)));
             foreach (string path in batch) File.Delete(path);
             _log($"Uploaded {batch.Count} run(s), {body.Length} bytes, as upload {auth["uploadId"]}.");
             return Outcome.Sent;
