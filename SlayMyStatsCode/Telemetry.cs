@@ -25,12 +25,15 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// </summary>
 public static class Telemetry
 {
-    public const int SchemaVersion = 1;
+    // v2: a turn now spans the enemy phase, and carries the hand it was dealt
+    // and its closing energy. v1 dropped everything the enemies did.
+    public const int SchemaVersion = 2;
 
     private sealed class Turn
     {
         public int Number;
         public int EnergyStart;
+        public int EnergyEnd;
         public int EnergySpent;
         public int StarsStart;
         public int Dealt;
@@ -38,6 +41,7 @@ public static class Telemetry
         public int Blocked;
         public int BlockGained;
         public int Orbs;
+        public List<string> Hand = [];
         public List<string> Drawn = [];
         public List<string> Played = [];
         public Dictionary<string, int> Powers = [];
@@ -54,6 +58,7 @@ public static class Telemetry
     private static readonly List<Fight> Fights = [];
     private static Fight? _fight;
     private static Turn? _turn;
+    private static ICombatState? _state;  // the fight in progress: a turn can start from any of its events
     private static bool _broken;
 
     /// <summary>The run's telemetry as one object, or null when nothing was recorded.</summary>
@@ -73,6 +78,7 @@ public static class Telemetry
                     {
                         ["n"] = t.Number,
                         ["e"] = t.EnergyStart,
+                        ["ee"] = t.EnergyEnd,
                         ["es"] = t.EnergySpent,
                         ["star"] = t.StarsStart,
                         ["dmg"] = t.Dealt,
@@ -81,6 +87,7 @@ public static class Telemetry
                         ["bgn"] = t.BlockGained,
                         ["orbs"] = t.Orbs,
                         ["drawn"] = new JsonArray([.. t.Drawn.Select(d => (JsonNode)JsonValue.Create(d)!).ToArray()]),
+                        ["hand"] = new JsonArray([.. t.Hand.Select(d => (JsonNode)JsonValue.Create(d)!).ToArray()]),
                         ["played"] = new JsonArray([.. t.Played.Select(p => (JsonNode)JsonValue.Create(p)!).ToArray()]),
                         ["powers"] = new JsonObject(t.Powers.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)JsonValue.Create(kv.Value))))
                     });
@@ -142,11 +149,76 @@ public static class Telemetry
         _turn = null;
     }
 
+    /// <summary>
+    /// The turn events belong to. Opened by whichever of the turn's first events
+    /// arrives first -- the hand is drawn before the turn-start hook, and the
+    /// enemy's attacks land after the player's side has ended -- and closed only
+    /// when the next player turn begins. Closing on the player's own turn end
+    /// loses everything the enemies did, which is most of the damage taken.
+    /// </summary>
+    private static void EnsureTurn()
+    {
+        if (_state == null) return;
+        int turn = TurnNumber(_state);
+        if (_turn != null && _turn.Number == turn) return;
+        CloseTurn();
+        _turn = new Turn
+        {
+            Number = turn,
+            EnergyStart = Energy(_state),
+            StarsStart = Stars(_state)
+        };
+        SnapshotPowers(_state);
+    }
+
+    /// <summary>The player's own turn count: it moves once a player turn, where the
+    /// round number would also move mid-round and split a turn in two.</summary>
+    private static int TurnNumber(ICombatState state)
+    {
+        int n = 0;
+        foreach (Player p in state.Players)
+        {
+            int t = p.PlayerCombatState?.TurnNumber ?? 0;
+            if (t > n) n = t;
+        }
+        return n > 0 ? n : state.RoundNumber;
+    }
+
+    /// <summary>The powers standing at the turn's start: uptime, not just changes.</summary>
+    private static void SnapshotPowers(ICombatState state)
+    {
+        if (_turn == null) return;
+        foreach (Player p in state.Players)
+        {
+            if (p.Creature == null) continue;
+            foreach (PowerModel power in p.Creature.Powers)
+            {
+                if (power.Amount != 0) _turn.Powers[power.Id.ToString()] = power.Amount;
+            }
+        }
+    }
+
+    /// <summary>The hand the turn was dealt. The draw happens before the turn-start
+    /// hook, so the per-card draw hook never sees it.</summary>
+    private static void SnapshotHand(ICombatState state)
+    {
+        if (_turn == null) return;
+        _turn.Hand.Clear();
+        foreach (Player p in state.Players)
+        {
+            foreach (CardModel card in p.PlayerCombatState?.Hand?.Cards ?? [])
+            {
+                _turn.Hand.Add(card.Id.ToString());
+            }
+        }
+    }
+
     // ---- the hooks -------------------------------------------------------
 
     public static void BeginFight(ICombatState state) => Guard(() =>
     {
         CloseTurn();
+        _state = state;
         _fight = new Fight
         {
             Encounter = state.Encounter?.Id?.ToString() ?? "",
@@ -160,64 +232,86 @@ public static class Telemetry
         CloseTurn();
         if (_fight != null) _fight.HpEnd = PlayerHp(state);
         _fight = null;
+        _state = null;
     });
 
-    public static void BeginTurn(ICombatState state) => Guard(() =>
+    /// <summary>The turn really starts here: the hand it was dealt, and the moment
+    /// the turn's own draws begin, so anything drawn before this was the hand.</summary>
+    public static void BeginTurn() => Guard(() =>
     {
-        CloseTurn();
-        _turn = new Turn
-        {
-            Number = state.RoundNumber,
-            EnergyStart = Energy(state),
-            StarsStart = Stars(state)
-        };
+        EnsureTurn();
+        if (_state == null || _turn == null) return;
+        SnapshotHand(_state);
+        _turn.Drawn.Clear();
     });
 
-    public static void EndTurn() => Guard(CloseTurn);
-
-    /// <summary>The turn's energy is granted after the turn-start hook, so read it
-    /// again here rather than depending on which of the two runs first.</summary>
+    /// <summary>The turn's energy is granted after the turn begins, so take it here:
+    /// this is the only point where the amount is settled.</summary>
     public static void EnergyReset(Player player) => Guard(() =>
     {
-        if (_turn == null || player?.Creature is not { IsPlayer: true }) return;
-        int energy = player.PlayerCombatState?.Energy ?? 0;
-        if (energy > _turn.EnergyStart) _turn.EnergyStart = energy;
+        EnsureTurn();
+        if (_turn != null) _turn.EnergyStart = player.PlayerCombatState?.Energy ?? 0;
     });
 
-    public static void CardDrawn(CardModel card) => Guard(() => _turn?.Drawn.Add(card.Id.ToString()));
+    /// <summary>Where the player's turn ended, for what the turn gained or banked.</summary>
+    public static void EnergyEnd(ICombatState state, CombatSide side) => Guard(() =>
+    {
+        if (_turn == null || side != CombatSide.Player) return;
+        _turn.EnergyEnd = Energy(state);
+    });
 
-    public static void CardPlayed(CardPlay play) => Guard(() => _turn?.Played.Add(play.Card.Id.ToString()));
+    public static void CardDrawn(CardModel card) => Guard(() =>
+    {
+        EnsureTurn();
+        _turn?.Drawn.Add(card.Id.ToString());
+    });
+
+    public static void CardPlayed(CardPlay play) => Guard(() =>
+    {
+        EnsureTurn();
+        _turn?.Played.Add(play.Card.Id.ToString());
+    });
 
     public static void EnergySpent(int amount) => Guard(() =>
     {
+        EnsureTurn();
         if (_turn != null) _turn.EnergySpent += amount;
     });
 
     public static void DamageGiven(Creature dealer, DamageResult result) => Guard(() =>
     {
-        if (_turn != null && IsPlayer(dealer)) _turn.Dealt += result.TotalDamage;
+        if (!IsPlayer(dealer)) return;
+        EnsureTurn();
+        if (_turn != null) _turn.Dealt += result.TotalDamage;
     });
 
     public static void DamageReceived(Creature target, DamageResult result) => Guard(() =>
     {
-        if (_turn == null || !IsPlayer(target)) return;
+        if (!IsPlayer(target)) return;
+        EnsureTurn();
+        if (_turn == null) return;
         _turn.Taken += result.UnblockedDamage;
         _turn.Blocked += result.BlockedDamage;
     });
 
     public static void BlockGained(Creature creature, decimal amount) => Guard(() =>
     {
-        if (_turn != null && IsPlayer(creature)) _turn.BlockGained += (int)amount;
+        if (!IsPlayer(creature)) return;
+        EnsureTurn();
+        if (_turn != null) _turn.BlockGained += (int)amount;
     });
 
     public static void PowerChanged(PowerModel power, Creature applier) => Guard(() =>
     {
-        if (_turn == null || applier == null || !IsPlayer(applier)) return;
+        if (applier == null || !IsPlayer(applier)) return;
+        EnsureTurn();
+        if (_turn == null) return;
         _turn.Powers[power.Id.ToString()] = power.Amount;
     });
 
     public static void OrbChanneled() => Guard(() =>
     {
+        EnsureTurn();
         if (_turn != null) _turn.Orbs++;
     });
 }
@@ -247,9 +341,9 @@ public static class TelemetryCombatEnd
 public static class TelemetryTurnStart
 {
     [HarmonyPostfix]
-    public static void Postfix(ICombatState combatState)
+    public static void Postfix()
     {
-        try { Telemetry.BeginTurn(combatState); } catch (Exception e) { MainFile.Logger.Error($"{e}"); }
+        try { Telemetry.BeginTurn(); } catch (Exception e) { MainFile.Logger.Error($"{e}"); }
     }
 }
 
@@ -257,9 +351,9 @@ public static class TelemetryTurnStart
 public static class TelemetryTurnEnd
 {
     [HarmonyPostfix]
-    public static void Postfix()
+    public static void Postfix(ICombatState combatState, CombatSide side)
     {
-        try { Telemetry.EndTurn(); } catch (Exception e) { MainFile.Logger.Error($"{e}"); }
+        try { Telemetry.EnergyEnd(combatState, side); } catch (Exception e) { MainFile.Logger.Error($"{e}"); }
     }
 }
 
