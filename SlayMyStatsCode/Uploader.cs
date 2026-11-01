@@ -70,12 +70,18 @@ public sealed class Uploader
     /// </summary>
     /// <param name="mods">The loaded mods, or null for a run from history, which went unwatched: it is sent like a
     /// run uploaded from files, saying nothing about mods.</param>
-    public void Enqueue(string runJson, JsonArray? mods)
+    public void Enqueue(string runJson, JsonArray? mods, JsonObject? telemetry = null)
     {
         JsonObject run = JsonNode.Parse(runJson)?.AsObject() ?? throw new JsonException("not a run");
         if (mods != null)
         {
             run["slay_my_stats_mod"] = new JsonObject { ["version"] = _modVersion, ["mods"] = mods.DeepClone() };
+        }
+        // What the deck actually did, when this session watched the run. Runs
+        // from history have none: they went unwatched.
+        if (telemetry != null)
+        {
+            run["telemetry"] = telemetry.DeepClone();
         }
 
         string name = run["start_time"]?.ToString() ?? Guid.NewGuid().ToString("N");
