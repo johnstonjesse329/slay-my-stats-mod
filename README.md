@@ -86,14 +86,38 @@ Run it after any game update, before trusting a run's worth of playtime.
 
 ## What is recorded
 
-Every run carries an event log with the upload: fights, turns, the hand each turn was dealt and what was
-drawn after, cards played, energy spent, damage given and received with the game's own `DamageResult`,
-every HP change, block gained and broken, power changes, orbs, stars and stars spent. The mod records
-events and nothing else — no sums, no readings. All of that happens on the site side, in
-`tools/power_curve/derive_telemetry.py`, so a reading that turns out wrong is re-derived from the logs
-instead of costing another run. The log is also written to
-`%APPDATA%\SlayTheSpire2\SlayMyStats\telemetry\live.ndjson` after every fight, so one fight is enough to
-confirm the recording works.
+Every run carries an event log with the upload. The mod records events and nothing else — no sums, no
+readings; all of that happens on the site side, in `tools/power_curve/derive_telemetry.py`, so a reading
+that turns out wrong is re-derived from the logs instead of costing another run.
+
+**Events**: fight start, victory and end; side and player turn boundaries (both edges), extra turns;
+`BeforeHandDraw` and every card drawn with `fromHandDraw`; energy reset and spend; cards played,
+discarded, exhausted, generated, entering combat and moving between piles; every HP change with its
+signed delta for every creature; damage given and received with the game's full `DamageResult`; block
+gained, broken and cleared; every power change with the applier; attacks and their hit counts; potions
+used (with target), procured and discarded; orbs channelled and evoked; stars gained and spent; forges;
+summons; deaths, deaths prevented, and deaths by doom; shuffles.
+
+**Snapshots**: at every turn boundary and at combat start, everything that is true only then — each
+creature's HP, max HP, block and powers with stacks, each enemy's `NextMove` and whether it intends to
+attack, and for the player the energy, stars, hand, pile counts, orbs, gold, potions held and every
+relic's counter and used-up state. A delta chain can be walked to reach some of this; a snapshot cannot
+disagree with itself.
+
+The log is also written to `%APPDATA%\SlayTheSpire2\SlayMyStats\telemetry\live.ndjson` after every fight,
+so one fight is enough to confirm the recording works.
+
+`hook_coverage.md` lists all 147 hooks the game documents and what the log does with each: recorded,
+derivable from what is recorded, or deliberately skipped with a reason. It is generated from `sts2.xml`
+and the patches themselves, so it cannot drift:
+
+```
+python tools/hook_coverage.py --check
+```
+
+Deliberately not recorded: the `Modify*`/`Should*` hooks (they adjust or veto values that other logged
+events already report, so logging both would put two sources of truth in the file), and anything the
+`.run` file already holds.
 
 ## Configure
 
@@ -194,6 +218,7 @@ Not tried yet:
 | `SlayMyStatsCode/ModConfig.cs` | `SlayMyStats.config.json` |
 | `Probe/` | The console program above |
 | `tools/check_patches.py` | Fails if a Harmony patch no longer fits the game's assembly |
+| `tools/hook_coverage.py` | Generates `hook_coverage.md`: every hook, and what the log does with it |
 | `Sts2PathDiscovery.props` | Finds the game, for both projects to build against |
 | `SlayMyStats.json` | The manifest the game reads |
 
