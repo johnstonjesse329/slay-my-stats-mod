@@ -188,7 +188,12 @@ public static class EventHooks
         EventLog.Add("draw1", new JsonObject { ["card"] = CardId(card), ["hand"] = fromHandDraw }));
 
     public static void CardPlayed(CardPlay? play) => Safe(() =>
-        EventLog.Add("play1", new JsonObject { ["card"] = CardId(play?.Card) }));
+        EventLog.Add("play1", new JsonObject
+        {
+            ["card"] = CardId(play?.Card),
+            ["up"] = play?.Card?.CurrentUpgradeLevel ?? 0,
+            ["auto"] = play?.Card?.IsInCombat == true && play?.Card?.Pile?.Type.ToString() == "Play"
+        }));
 
     public static void CardDiscarded(CardModel? card) => Safe(() =>
         EventLog.Add("disc", new JsonObject { ["card"] = CardId(card) }));
@@ -211,9 +216,6 @@ public static class EventHooks
             ["d"] = (int)delta,
             ["hp"] = creature?.CurrentHp ?? 0
         }));
-
-    public static void DamageAboutToBeReceived(Creature? target, decimal amount) => Safe(() =>
-        EventLog.Add("recv0", new JsonObject { ["t"] = Name(target), ["n"] = (int)amount }));
 
     public static void DamageReceived(Creature? target, DamageResult? result, Creature? dealer) => Safe(() =>
         EventLog.Add("recv", new JsonObject
@@ -314,7 +316,15 @@ public static class EventHooks
         EventLog.Add("blkc", new JsonObject { ["c"] = Name(creature) }));
 
     public static void CardChangedPiles(CardModel? card, string from) => Safe(() =>
-        EventLog.Add("pile", new JsonObject { ["card"] = CardId(card), ["from"] = from }));
+        EventLog.Add("pile", new JsonObject
+        {
+            ["card"] = CardId(card),
+            ["from"] = from,
+            // Where it went. A card can leave the draw pile straight into play
+            // (Cascade and friends), so `to` is what says whether it ever reached
+            // the hand -- and it is the only way to track the hand exactly.
+            ["to"] = card?.Pile?.Type.ToString() ?? ""
+        }));
 
     public static void CardEnteredCombat(CardModel? card) => Safe(() =>
         EventLog.Add("enter", new JsonObject { ["card"] = CardId(card) }));
@@ -622,16 +632,6 @@ public static class EventHpChanged
     public static void Postfix(Creature creature, decimal delta)
     {
         EventHooks.HpChanged(creature, delta);
-    }
-}
-
-[HarmonyPatch(typeof(Hook), nameof(Hook.BeforeDamageReceived))]
-public static class EventDamageIncoming
-{
-    [HarmonyPostfix]
-    public static void Postfix(Creature target, decimal amount)
-    {
-        EventHooks.DamageAboutToBeReceived(target, amount);
     }
 }
 
