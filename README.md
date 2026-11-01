@@ -71,6 +71,30 @@ dotnet build
 
 This builds `SlayMyStats.dll` and changes nothing in the game.
 
+## Check the patches
+
+Harmony binds a patch's parameters **by name**, and the compiler cannot help: if a game update renames
+one, that patch silently stops firing and the event it recorded simply never appears again. This compares
+the source against the installed assembly and fails on any mismatch. It needs PowerShell 7 (`pwsh`),
+because the game is built for .NET 9.
+
+```
+python tools/check_patches.py
+```
+
+Run it after any game update, before trusting a run's worth of playtime.
+
+## What is recorded
+
+Every run carries an event log with the upload: fights, turns, the hand each turn was dealt and what was
+drawn after, cards played, energy spent, damage given and received with the game's own `DamageResult`,
+every HP change, block gained and broken, power changes, orbs, stars and stars spent. The mod records
+events and nothing else — no sums, no readings. All of that happens on the site side, in
+`tools/power_curve/derive_telemetry.py`, so a reading that turns out wrong is re-derived from the logs
+instead of costing another run. The log is also written to
+`%APPDATA%\SlayTheSpire2\SlayMyStats\telemetry\live.ndjson` after every fight, so one fight is enough to
+confirm the recording works.
+
 ## Configure
 
 Copy `SlayMyStats.config.example.json` to `SlayMyStats.config.json` (not in git) and set the endpoints: each
@@ -163,10 +187,13 @@ Not tried yet:
 |---|---|
 | `SlayMyStatsCode/MainFile.cs` | Entry point: patches the game, reads the config, starts the uploader |
 | `SlayMyStatsCode/RunEndPatch.cs` | The hook on the game saving a run to history |
+| `SlayMyStatsCode/EventHooks.cs` | One patch per game event: fight, turn, card, HP, damage, block, power, orb, star |
+| `SlayMyStatsCode/EventLog.cs` | The raw log: events in, one object out for the upload |
 | `SlayMyStatsCode/Uploader.cs` | Queue, batching, retries, the two HTTP requests |
 | `SlayMyStatsCode/SteamTicket.cs` | Asks Steam who is playing |
 | `SlayMyStatsCode/ModConfig.cs` | `SlayMyStats.config.json` |
 | `Probe/` | The console program above |
+| `tools/check_patches.py` | Fails if a Harmony patch no longer fits the game's assembly |
 | `Sts2PathDiscovery.props` | Finds the game, for both projects to build against |
 | `SlayMyStats.json` | The manifest the game reads |
 

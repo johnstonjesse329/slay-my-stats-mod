@@ -22,7 +22,21 @@ public partial class MainFile : Node
     public static void Initialize()
     {
         Harmony harmony = new(ModId);
-        harmony.PatchAll(Assembly.GetExecutingAssembly());
+
+        // Patched one class at a time: a single patch that no longer fits the game's
+        // assembly (a new build renaming a parameter) must not take the rest with it.
+        foreach (Type type in Assembly.GetExecutingAssembly().GetTypes())
+        {
+            if (type.GetCustomAttributes(typeof(HarmonyPatch), true).Length == 0) continue;
+            try
+            {
+                harmony.CreateClassProcessor(type).Patch();
+            }
+            catch (Exception e)
+            {
+                Logger.Error($"Patch {type.Name} did not apply: {e}");
+            }
+        }
 
         List<string> sites = [];
 

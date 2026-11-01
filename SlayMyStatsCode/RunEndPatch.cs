@@ -27,7 +27,7 @@ public static class RunEndPatch
             // Writing it to the queue and sending it are left to a background task.
             string json = JsonSerializationUtility.ToJson(history);
             JsonArray mods = LoadedMods();
-            JsonObject? telemetry = Telemetry.Take();
+            JsonObject? telemetry = EventLog.Take();
             MainFile.Logger.Info($"Run ended: {history.StartTime}.run win={history.Win} abandoned={history.WasAbandoned}. Queuing it for upload.");
 
             foreach (Uploader uploader in MainFile.Uploaders)
@@ -45,7 +45,8 @@ public static class RunEndPatch
                     }
                 });
             }
-            Telemetry.Reset();  // the next run starts with an empty log
+            EventLog.Reset();       // the next run starts with an empty log
+            EventHooks.Reset();     // and a hook failure is retried on the next one
         }
         catch (Exception e)
         {
