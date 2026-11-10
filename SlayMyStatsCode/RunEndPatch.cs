@@ -28,6 +28,7 @@ public static class RunEndPatch
             string json = JsonSerializationUtility.ToJson(history);
             JsonArray mods = LoadedMods();
             JsonObject? telemetry = EventLog.Take();
+            JsonArray? maps = MapLog.Take();
             MainFile.Logger.Info($"Run ended: {history.StartTime}.run win={history.Win} abandoned={history.WasAbandoned}. Queuing it for upload.");
 
             foreach (Uploader uploader in MainFile.Uploaders)
@@ -36,7 +37,7 @@ public static class RunEndPatch
                 {
                     try
                     {
-                        uploader.Enqueue(json, mods, telemetry);
+                        uploader.Enqueue(json, mods, telemetry, maps);
                         await uploader.DrainAsync();
                     }
                     catch (Exception e)
@@ -45,6 +46,7 @@ public static class RunEndPatch
                     }
                 });
             }
+            MapLog.Reset();
             EventLog.Reset();       // the next run starts with an empty log
             EventHooks.Reset();     // and a hook failure is retried on the next one
         }
