@@ -15,8 +15,13 @@ With any mod loaded, the game keeps its saves in a separate folder:
 ```
 
 instead of `...\<your steam id>\profile1\...`. Your existing runs and progress stay where they are, and
-runs you play with the mod are saved in the `modded` folder. That folder starts as a new profile: none of
-your unlocks or progress are in it. With no mods left in `mods\`, the game goes back to its normal saves.
+runs you play with the mod are saved in the `modded` folder. With no mods left in `mods\`, the game goes
+back to its normal saves.
+
+The first time the game loads a mod, and only if there is no `modded` folder yet, it copies your profiles,
+progress and run history into it (`ModManager.CopyUnmoddedSaveFilesIfNeeded`). If a `modded` folder
+already exists, from an earlier mod or an older game version, nothing is copied and it starts as a new
+profile. Read from the game's code, not yet watched on a fresh install.
 
 That is why a plain build doesn't touch the game: installing is its own step.
 
@@ -138,6 +143,11 @@ Every run goes to every endpoint. Each has its own queue (`%APPDATA%\SlayTheSpir
 and its own retries, and its log lines start with `[<name>]`, so one site being down or refusing doesn't hold
 back the others. Each site needs your Steam ID on its own allowlist.
 
+A `config.json` in `%APPDATA%\SlayTheSpire2\SlayMyStats\` is laid over that file: each key it sets replaces
+the one next to the `.dll`. That is the one a Workshop subscriber edits, since Steam replaces the mod's
+folder on every update. `{"enabled": false}` on its own turns uploads off; `{"enabled": true}` turns them
+on with the shipped endpoints.
+
 With no config file, or `"enabled": false`, the mod loads and sends nothing.
 
 ## Install
@@ -156,6 +166,34 @@ copies the `.dll`, `SlayMyStats.json` and your config to `<game>\mods\SlayMyStat
 for `Slay My Stats loaded. Uploads are on, to prod and gamma.` in `%APPDATA%\SlayTheSpire2\logs\godot.log`.
 
 To uninstall, delete `<game>\mods\SlayMyStats\`.
+
+## Steam Workshop
+
+`workshop\` is the workspace for Mega Crit's [uploader](https://github.com/megacrit/sts2-mod-uploader):
+`workshop.json` (title, description, visibility, branches), `image.png` (the preview, under 1 MB) and
+`content\`, which is what subscribers get.
+
+```
+.\workshop\stage.ps1 -Uploads On      # or Off: whether subscribers upload before they set anything
+.\workshop\.uploader\ModUploader.exe upload -w workshop
+```
+
+`stage.ps1` builds the release `.dll` and puts it in `content\` with the manifest and a config pointing at
+prod only, then fetches the uploader (pinned to v0.2.0 by hash). It uploads nothing. The upload needs Steam
+running, signed in to the account that owns the item. The first one creates the item and writes
+`workshop\mod_id.txt`, which goes in git; later ones update that item. Each release: run
+`tools/check_patches.py`, bump `version` in `SlayMyStats.json`, set `changeNote`, stage, upload.
+
+The uploader sends `visibility`, `minBranch` and `maxBranch` from `workshop.json` on every upload, so set them
+there, not on the Workshop page; an upload would undo the page. The game checks a subscriber's branch
+against that range, ordered oldest to newest: `public`, then `public-beta`. `public`/`public` serves the main
+branch only; `public`/`public-beta` serves both. The uploader's template has them the other way round
+(`public-beta` to `public`), which matches no branch.
+
+With the same mod id both subscribed and in `mods\`, the game loads the higher version and disables the
+other; at equal versions the `mods\` copy wins. So a local dev install keeps working next to a subscription.
+The game also reads `<game>\mods_STEAMTEST\` as if it were the Workshop, which tries the staged `content\`
+the Workshop way without uploading it.
 
 ## Try it without the game
 
@@ -215,12 +253,13 @@ Not tried yet:
 | `SlayMyStatsCode/EventLog.cs` | The raw log: events in, one object out for the upload |
 | `SlayMyStatsCode/Uploader.cs` | Queue, batching, retries, the two HTTP requests |
 | `SlayMyStatsCode/SteamTicket.cs` | Asks Steam who is playing |
-| `SlayMyStatsCode/ModConfig.cs` | `SlayMyStats.config.json` |
+| `SlayMyStatsCode/ModConfig.cs` | `SlayMyStats.config.json`, with the player's `config.json` laid over it |
 | `Probe/` | The console program above |
 | `tools/check_patches.py` | Fails if a Harmony patch no longer fits the game's assembly |
 | `tools/hook_coverage.py` | Generates `hook_coverage.md`: every hook, and what the log does with it |
 | `Sts2PathDiscovery.props` | Finds the game, for both projects to build against |
 | `SlayMyStats.json` | The manifest the game reads |
+| `workshop/` | The Steam Workshop workspace and `stage.ps1` |
 
 ## License
 

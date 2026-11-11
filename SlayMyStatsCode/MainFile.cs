@@ -44,11 +44,12 @@ public partial class MainFile : Node
         try
         {
             string modDir = ModDir();
-            ModConfig? config = ModConfig.Load(modDir, message => Logger.Info(message));
+            string userDir = Path.Combine(OS.GetUserDataDir(), ModId);
+            ModConfig? config = ModConfig.Load(userDir, modDir, message => Logger.Info(message));
             foreach ((string name, string url) in config?.Endpoints ?? [])
             {
                 // Separate queues, so a site that is down or says no never holds runs back from the others.
-                string queueDir = Path.Combine(OS.GetUserDataDir(), ModId, "queue", name);
+                string queueDir = Path.Combine(userDir, "queue", name);
                 Uploaders.Add(new Uploader(new Uri(url), queueDir, SteamTicket.GetAsync,
                     message => Logger.Info($"[{name}] {message}"), Version(modDir)));
                 sites.Add(name);

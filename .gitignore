@@ -2,6 +2,11 @@
 bin/
 obj/
 SlayMyStats.config.json
+# Built by workshop/stage.ps1; the uploader is fetched there too.
+/workshop/content/
+/workshop/.uploader/
+mod-uploader.log
+__pycache__/
 /android/
 .git/
 .idea/

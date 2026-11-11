@@ -1,15 +1,21 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace SlayMyStats.SlayMyStatsCode;
 
 /// <summary>
-/// SlayMyStats.config.json, next to the mod's .dll. Without it, or with "enabled": false, the mod sends nothing.
+/// SlayMyStats.config.json, shipped next to the mod's .dll, with the player's own config.json in
+/// %APPDATA%\SlayTheSpire2\SlayMyStats laid over it: each key the player sets replaces the shipped one, so
+/// {"enabled": false} on its own turns uploads off and keeps the shipped endpoints. The player's file lives
+/// apart because Steam replaces the mod's folder on every Workshop update. Without either, or with
+/// "enabled": false, the mod sends nothing.
 /// </summary>
 public sealed class ModConfig
 {
     public const string FileName = "SlayMyStats.config.json";
+    public const string UserFileName = "config.json";
 
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; } = true;
@@ -22,30 +28,47 @@ public sealed class ModConfig
     [JsonPropertyName("endpoints")]
     public Dictionary<string, string> Endpoints { get; set; } = [];
 
-    /// <summary>The config in this folder, or null (with the reason logged) if uploads should stay off.</summary>
-    public static ModConfig? Load(string folder, Action<string> log)
+    /// <summary>
+    /// The shipped config with the player's laid over it; null (with the reason logged) if uploads should stay
+    /// off.
+    /// </summary>
+    public static ModConfig? Load(string userFolder, string modFolder, Action<string> log)
     {
-        string path = Path.Combine(folder, FileName);
-        if (!File.Exists(path))
+        string[] paths = [Path.Combine(modFolder, FileName), Path.Combine(userFolder, UserFileName)];
+        string[] found = paths.Where(File.Exists).ToArray();
+        if (found.Length == 0)
         {
-            log($"No {FileName} in {folder}; uploads are off.");
+            log($"No {string.Join(" or ", paths)}; uploads are off.");
             return null;
         }
+        string path = string.Join(" + ", found);
+        log($"Reading {path}.");
 
         ModConfig? config;
         try
         {
-            config = JsonSerializer.Deserialize<ModConfig>(File.ReadAllText(path));
+            JsonObject merged = [];
+            foreach (string file in found)
+            {
+                if (JsonNode.Parse(File.ReadAllText(file)) is not JsonObject layer)
+                    throw new JsonException($"{file} isn't a JSON object");
+                foreach ((string key, JsonNode? value) in layer.ToList())
+                {
+                    layer.Remove(key);
+                    merged[key] = value;
+                }
+            }
+            config = merged.Deserialize<ModConfig>();
         }
         catch (JsonException e)
         {
-            log($"{FileName} isn't valid JSON ({e.Message}); uploads are off.");
+            log($"{path} isn't valid JSON ({e.Message}); uploads are off.");
             return null;
         }
 
         if (config is not { Enabled: true })
         {
-            log($"Uploads are turned off in {FileName}.");
+            log($"Uploads are turned off in {path}.");
             return null;
         }
 
@@ -55,14 +78,14 @@ public sealed class ModConfig
             if (!Regex.IsMatch(name, "^[a-z0-9-]+$") ||
                 !Uri.TryCreate(url, UriKind.Absolute, out Uri? endpoint) || endpoint.Scheme is not ("https" or "http"))
             {
-                log($"Skipping endpoint \"{name}\" in {FileName}: the name or address isn't usable.");
+                log($"Skipping endpoint \"{name}\" in {path}: the name or address isn't usable.");
                 config.Endpoints.Remove(name);
             }
         }
 
         if (config.Endpoints.Count == 0)
         {
-            log($"{FileName} has no usable \"endpoints\"; uploads are off.");
+            log($"{path} has no usable \"endpoints\"; uploads are off.");
             return null;
         }
 
