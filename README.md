@@ -5,7 +5,7 @@ so you don't have to sign in and pick your history folder.
 
 ## Install
 
-Subscribe on the Steam Workshop.
+Subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3838251909).
 
 ## What it sends
 
@@ -36,6 +36,8 @@ python tools/check_patches.py          # after a game update: fails if a patch n
 Each release: `check_patches.py`, bump `version` in `SlayMyStats.json`, set `changeNote` in
 `workshop\workshop.json`, stage, upload. Set visibility and branches in `workshop.json`, not on the Workshop
 page: every upload sends them again.
+
+The site's code is in [slay-my-stats](https://github.com/johnstonjesse329/slay-my-stats).
 
 ## License
 
