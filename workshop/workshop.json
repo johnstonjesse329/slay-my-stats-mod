@@ -1,9 +1,9 @@
 {
   "title": "Slay My Stats",
-  "description": "DRAFT, waiting on approval.\n\nUploads each run to [url=https://slay-my-stats.com]slay-my-stats.com[/url] when it ends, so you don't have to sign in and pick your history folder.\n\n[h2]What it sends[/h2]\nYour Steam ID, a short-lived Steam ticket that says this Steam account is playing, and each run as the game saves it, with a log of each fight. Runs you played before installing it are sent too. Nothing else, and there is no password or key in the mod.\n\n[h2]Your saves[/h2]\nWith any mod loaded, the game keeps its saves in a separate \"modded\" folder. The first time, the game copies your progress there. Unsubscribe and it goes back to your normal saves.\n\n[h2]Turning it off[/h2]\nPut a config.json in %APPDATA%\\SlayTheSpire2\\SlayMyStats containing {\"enabled\": false}, or unsubscribe.\n\nSource: [url=https://github.com/johnstonjesse329/slay-my-stats-mod]github.com/johnstonjesse329/slay-my-stats-mod[/url]",
+  "description": "Uploads each run to [url=https://slay-my-stats.com]slay-my-stats.com[/url] when it ends, so you don't have to sign in and pick your history folder.\n\n[h2]What it sends[/h2]\nYour Steam ID, a short-lived Steam ticket that says this Steam account is playing, and each run as the game saves it, with a log of each fight. Runs you played before installing it are sent too. Nothing else, and there is no password or key in the mod.\n\n[h2]Your saves[/h2]\nWith any mod loaded, the game keeps its saves in a separate \"modded\" folder. The first time, the game copies your progress there. Unsubscribe and it goes back to your normal saves.\n\n[h2]Turning it off[/h2]\nPut a config.json in %APPDATA%\\SlayTheSpire2\\SlayMyStats containing {\"enabled\": false}, or unsubscribe.\n\nSource: [url=https://github.com/johnstonjesse329/slay-my-stats-mod]github.com/johnstonjesse329/slay-my-stats-mod[/url]",
   "visibility": "private",
   "changeNote": "First upload.",
-  "tags": [],
+  "tags": ["Utility"],
   "dependencies": [],
   "contentDescriptors": [],
   "minBranch": "public",
