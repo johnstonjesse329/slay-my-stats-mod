@@ -38,9 +38,9 @@ if (-not (Test-Path (Join-Path $uploaderDir "ModUploader.exe"))) {
 }
 
 $url = aws cloudformation describe-stacks --stack-name SlayMyStatsStack --output text `
-    --query "Stacks[0].Outputs[?OutputKey=='IngestFunctionUrl'].OutputValue"
+    --query "Stacks[0].Outputs[?OutputKey=='ModIngestFunctionUrl'].OutputValue"
 if ($LASTEXITCODE -ne 0 -or "$url" -notlike "https://*") {
-    throw "Couldn't read prod's IngestFunctionUrl from AWS. Sign in to AWS and run this again."
+    throw "Couldn't read prod's ModIngestFunctionUrl from AWS. Sign in to AWS and run this again."
 }
 
 dotnet build "$repo\SlayMyStats.csproj" -c ExportRelease

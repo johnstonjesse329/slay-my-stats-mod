@@ -11,9 +11,9 @@ Set-Location $PSScriptRoot
 $endpoints = [ordered]@{}
 foreach ($site in @(@{ name = "prod"; stack = "SlayMyStatsStack" }, @{ name = "gamma"; stack = "SlayMyStatsGammaStack" })) {
     $url = aws cloudformation describe-stacks --stack-name $site.stack --output text `
-        --query "Stacks[0].Outputs[?OutputKey=='IngestFunctionUrl'].OutputValue"
+        --query "Stacks[0].Outputs[?OutputKey=='ModIngestFunctionUrl'].OutputValue"
     if ($LASTEXITCODE -ne 0 -or "$url" -notlike "https://*") {
-        throw "Couldn't read $($site.name)'s IngestFunctionUrl from AWS. Sign in to AWS, or write SlayMyStats.config.json by hand."
+        throw "Couldn't read $($site.name)'s ModIngestFunctionUrl from AWS. Sign in to AWS, or write SlayMyStats.config.json by hand."
     }
     $endpoints[$site.name] = "$($url.Trim().TrimEnd('/'))/mod"
     Write-Host "Uploading to $($site.name): $($endpoints[$site.name])"

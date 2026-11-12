@@ -323,7 +323,7 @@ public sealed class Uploader
 
     /// <summary>
     /// Too soon, a clash with another upload, or the server's own trouble: all worth another try. Anything else
-    /// (not on the allowlist, a ticket Steam won't confirm) will get the same answer however often it's asked.
+    /// (a ticket Steam won't confirm) will get the same answer however often it's asked.
     /// </summary>
     private static bool IsWorthRetrying(HttpStatusCode status)
     {
