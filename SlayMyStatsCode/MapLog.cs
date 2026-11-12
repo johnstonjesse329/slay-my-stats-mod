@@ -11,9 +11,11 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// in the order they were visited, so the map itself (which nodes existed, which joined which) can only be
 /// taken while the run is live.
 ///
-/// Taken the first time a map node is entered in an act, not when the map is generated: a run that was saved
-/// and resumed never generates its map again, but it always enters nodes. The game's own SerializableActMap
-/// is the shape written to its save file, so it is read rather than the live grid.
+/// Taken each time a map node is entered, not when the map is generated: a run that was saved and resumed
+/// never generates its map again, but it always enters nodes. Every entry replaces the act's map rather than
+/// keeping the first, because the map can change mid-act (Golden Compass, picked at the act's Ancient, swaps
+/// it for a single straight path). The game's own SerializableActMap is the shape written to its save file,
+/// so it is read rather than the live grid.
 ///
 /// Each act is one object: { act, width, height, boss, points: [[row, col, type, [[childRow, childCol], ...]]],
 /// path: [[row, col], ...] }. "type" is the game's MapPointType name.
@@ -36,11 +38,8 @@ public static class MapLog
     public static void Visit(RunState state)
     {
         int act = state.CurrentActIndex;
-        if (!Acts.TryGetValue(act, out JsonObject? entry))
-        {
-            entry = Describe(act, state.Map);
-            Acts[act] = entry;
-        }
+        JsonObject entry = Describe(act, state.Map);
+        Acts[act] = entry;
         // The game keeps the visited coordinates of the current act only, so the path is rewritten from it.
         JsonArray path = [];
         foreach (MapCoord c in state.VisitedMapCoords) path.Add(new JsonArray(c.row, c.col));
