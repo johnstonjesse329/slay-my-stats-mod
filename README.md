@@ -76,6 +76,9 @@ dotnet build
 
 This builds `SlayMyStats.dll` and changes nothing in the game.
 
+Once per clone, `git config core.hooksPath githooks`: commits and pushes then refuse Steam IDs, real Lambda
+URLs, AWS keys, emails and the real `SlayMyStats.config.json` (`tools/check_secrets.py`, from slay-my-stats).
+
 ## Check the patches
 
 Harmony binds a patch's parameters **by name**, and the compiler cannot help: if a game update renames
@@ -186,8 +189,9 @@ running, signed in to the account that owns the item. The first one creates the 
 
 The uploader sends `visibility`, `minBranch` and `maxBranch` from `workshop.json` on every upload, so set them
 there, not on the Workshop page; an upload would undo the page. The game checks a subscriber's branch
-against that range, ordered oldest to newest: `public`, then `public-beta`. `public`/`public` serves the main
-branch only; `public`/`public-beta` serves both. The uploader's template has them the other way round
+against that range, ordered oldest to newest: `public`, then `public-beta`. `public`/`public` would serve the main
+branch only; `public`/`public-beta`, what this item uses, serves both, and `min_game_version` in the manifest
+keeps an older game from loading a build it can't run. The uploader's template has them the other way round
 (`public-beta` to `public`), which matches no branch.
 
 With the same mod id both subscribed and in `mods\`, the game loads the higher version and disables the
@@ -256,6 +260,7 @@ Not tried yet:
 | `SlayMyStatsCode/ModConfig.cs` | `SlayMyStats.config.json`, with the player's `config.json` laid over it |
 | `Probe/` | The console program above |
 | `tools/check_patches.py` | Fails if a Harmony patch no longer fits the game's assembly |
+| `tools/check_secrets.py` | Run by `githooks/`: refuses to commit or push private values |
 | `tools/hook_coverage.py` | Generates `hook_coverage.md`: every hook, and what the log does with it |
 | `Sts2PathDiscovery.props` | Finds the game, for both projects to build against |
 | `SlayMyStats.json` | The manifest the game reads |

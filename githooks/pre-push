@@ -1,0 +1,10 @@
+#!/bin/sh
+# Refuse to push private values: every tracked file (see tools/check_secrets.py).
+# Enable once per clone:  git config core.hooksPath githooks
+root=$(git rev-parse --show-toplevel)
+py=$(command -v python3 || command -v python || echo "")
+if [ -z "$py" ]; then
+    echo "check_secrets: no python found, skipping the secrets check." >&2
+    exit 0
+fi
+exec "$py" "$root/tools/check_secrets.py"
