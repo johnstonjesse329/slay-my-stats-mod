@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Map;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
@@ -17,8 +18,11 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// it for a single straight path). The game's own SerializableActMap is the shape written to its save file,
 /// so it is read rather than the live grid.
 ///
-/// Each act is one object: { act, width, height, boss, points: [[row, col, type, [[childRow, childCol], ...]]],
-/// path: [[row, col], ...] }. "type" is the game's MapPointType name.
+/// Each act is one object: { act, width, height, boss, boss_encounter, points: [[row, col, type,
+/// [[childRow, childCol], ...]]], path: [[row, col], ...] }, plus second_boss and second_boss_encounter on an
+/// act with two bosses (the last act from Ascension 10). "type" is the game's MapPointType name. The bosses
+/// are rolled when the run starts, so they are known before the player reaches them; the .run file only
+/// names the ones that were fought.
 /// </summary>
 public static class MapLog
 {
@@ -38,7 +42,7 @@ public static class MapLog
     public static void Visit(RunState state)
     {
         int act = state.CurrentActIndex;
-        JsonObject entry = Describe(act, state.Map);
+        JsonObject entry = Describe(act, state.Map, state.Act);
         Acts[act] = entry;
         // The game keeps the visited coordinates of the current act only, so the path is rewritten from it.
         JsonArray path = [];
@@ -46,7 +50,7 @@ public static class MapLog
         entry["path"] = path;
     }
 
-    private static JsonObject Describe(int act, ActMap map)
+    private static JsonObject Describe(int act, ActMap map, ActModel model)
     {
         SerializableActMap saved = SerializableActMap.FromActMap(map);
         JsonArray points = [];
@@ -65,6 +69,11 @@ public static class MapLog
             ["path"] = new JsonArray(),
         };
         if (saved.BossPoint != null) o["boss"] = new JsonArray(saved.BossPoint.Coord.row, saved.BossPoint.Coord.col);
+        if (saved.SecondBossPoint != null)
+            o["second_boss"] = new JsonArray(saved.SecondBossPoint.Coord.row, saved.SecondBossPoint.Coord.col);
+        o["boss_encounter"] = model.BossEncounter.Id.ToString();
+        if (model.HasSecondBoss && model.SecondBossEncounter != null)
+            o["second_boss_encounter"] = model.SecondBossEncounter.Id.ToString();
         return o;
     }
 }
