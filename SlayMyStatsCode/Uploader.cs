@@ -15,8 +15,8 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// (proving who is playing with a Steam ticket instead of a browser sign-in), then POST the gzip'd runs, one
 /// JSON object per line, straight to that URL.
 ///
-/// Runs that ended without the mod (before it was installed, or while it was turned off) are backfilled: once
-/// per launch the uploader asks the site which runs it already has, and queues the rest from the game's history.
+/// Runs played unmodded before the mod was installed are backfilled: once per launch the uploader asks the site
+/// which runs it already has, and queues the rest from the game's normal history, until the site has them all.
 /// </summary>
 public sealed class Uploader
 {
@@ -28,12 +28,17 @@ public sealed class Uploader
 
     // The server has its own limits. These are here so that this mod, if it ever goes wrong, stops by itself
     // rather than being stopped: it gives up on a batch after a few tries, and asks at most this often.
-    private const int MaxRequestsPerHour = 20;
-    private const int MaxQueuedRuns = 200;
-    private const int MaxRunsPerUpload = 50;
+    private const int MaxRequestsPerHour = 30;
+    private const int MaxQueuedRuns = 500;
+    private const int MaxRunsPerUpload = 500;
+    // Under the site's 1 MiB. A batch is halved until it fits: ~250 old runs, or a handful with fight logs.
+    private const int MaxUploadBytes = 1_000_000;
     private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5)];
 
     private enum Outcome { Sent, Retry, Stop }
+
+    // The steam folder again when the last backfill found more missing runs than the queue had room for.
+    private string? _backfillMore;
 
     // Every run this uploader has sent, one start time per line, kept beside the queue. A run the site took but
     // didn't keep (one its parser rejects) is never backfilled again because of it.
@@ -119,24 +124,34 @@ public sealed class Uploader
 
         try
         {
-            if (Interlocked.Exchange(ref _backfillFrom, null) is { } steamDir)
+            async Task Backfill(string steamDir)
             {
                 try
                 {
-                    await BackfillAsync(steamDir);
+                    _backfillMore = await BackfillAsync(steamDir) ? steamDir : null;
                 }
                 catch (Exception e) when (e is HttpRequestException or TaskCanceledException or TicketException or IOException or JsonException)
                 {
                     // Only the backfill waits for the next launch; the queue still goes now.
+                    _backfillMore = null;
                     _log($"Couldn't check the site for missing runs ({e.GetType().Name}: {e.Message}). Trying again next launch.");
                 }
             }
+
+            if (Interlocked.Exchange(ref _backfillFrom, null) is { } steamDir) await Backfill(steamDir);
 
             int attempt = 0;
             while (!_stopped)
             {
                 List<string> batch = NextBatch();
-                if (batch.Count == 0) return;
+                if (batch.Count == 0)
+                {
+                    // The queue is empty: if the history had more than it could hold, queue the next lot.
+                    if (_backfillMore is not { } more) return;
+                    await Backfill(more);
+                    if (NextBatch().Count == 0) return;
+                    continue;
+                }
 
                 Outcome outcome;
                 try
@@ -181,11 +196,13 @@ public sealed class Uploader
     }
 
     /// <summary>
-    /// The runs in every history folder of the playing account, normal and modded profiles alike, that the site
-    /// doesn't have and this uploader hasn't sent or queued, up to what the queue has room for; the rest go next
-    /// launch. A history file is named by the run's start time, which is also how the site tells runs apart.
+    /// The runs in the playing account's normal profiles that the site doesn't have and this uploader hasn't sent
+    /// or queued, up to what the queue has room for. Says whether any were left over for the next lot. The
+    /// "modded" profiles are skipped: the game doesn't record which mods a run was played with, and runs this mod
+    /// watched were sent as they ended. A history file is named by the run's start time, which is also how the
+    /// site tells runs apart.
     /// </summary>
-    private async Task BackfillAsync(string steamDir)
+    private async Task<bool> BackfillAsync(string steamDir)
     {
         (string steamId, HashSet<long> have) = await SiteRunsAsync();
 
@@ -199,6 +216,7 @@ public sealed class Uploader
                 ? Directory.GetFiles(accountDir, "*.run", SearchOption.AllDirectories)
                 : [])
             .Where(f => Path.GetFileName(Path.GetDirectoryName(f)) == "history")
+            .Where(f => Path.GetRelativePath(accountDir, f).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0] != "modded")
             .Select(f => (Ok: long.TryParse(Path.GetFileNameWithoutExtension(f), out long start), Start: start, Path: f))
             .Where(r => r.Ok && !have.Contains(r.Start) && !skip.Contains(r.Start.ToString()))
             .DistinctBy(r => r.Start)
@@ -224,12 +242,14 @@ public sealed class Uploader
         _log(missing.Count == 0
             ? $"The site has all {have.Count} run(s) it should; nothing to backfill."
             : $"The site is missing {missing.Count} run(s) from the game's history; queued {added}" +
-              (missing.Count > room ? ", the rest next launch." : "."));
+              (missing.Count > room ? ", the rest once those are sent." : "."));
+        return missing.Count > room;
     }
 
     /// <summary>Who is playing, and the start time of every run the site already has for them.</summary>
     private async Task<(string SteamId, HashSet<long> Runs)> SiteRunsAsync()
     {
+        await RequestSlotAsync();
         Ticket ticket = await _getTicket();
         try
         {
@@ -263,22 +283,36 @@ public sealed class Uploader
         return queued.Take(_batchSize).ToList();
     }
 
-    private async Task<Outcome> SendAsync(List<string> batch)
+    /// <summary>
+    /// Wait, if need be, until fewer than MaxRequestsPerHour requests were made in the last hour. A big
+    /// history takes a while this way; a mod gone wrong can't ask more often than that however long it runs.
+    /// </summary>
+    private async Task RequestSlotAsync()
     {
         DateTime now = DateTime.UtcNow;
         _requests.RemoveAll(t => now - t > TimeSpan.FromHours(1));
-        if (_requests.Count >= MaxRequestsPerHour)
+        if (_requests.Count < MaxRequestsPerHour) return;
+
+        TimeSpan wait = _requests.Min() + TimeSpan.FromHours(1) - now + TimeSpan.FromSeconds(1);
+        _log($"Already asked {MaxRequestsPerHour} times in the last hour. Waiting {wait.TotalMinutes:0} min.");
+        await Task.Delay(wait);
+    }
+
+    private async Task<Outcome> SendAsync(List<string> batch)
+    {
+        // As many runs as fit: halve the batch until it compresses under the limit.
+        byte[] body = Gzip(string.Join("\n", batch.Select(File.ReadAllText)));
+        while (body.Length > MaxUploadBytes && batch.Count > 1)
         {
-            _log($"Already asked {MaxRequestsPerHour} times in the last hour.");
-            return Outcome.Stop;
+            batch.RemoveRange(batch.Count / 2, batch.Count - batch.Count / 2);
+            body = Gzip(string.Join("\n", batch.Select(File.ReadAllText)));
         }
 
-        byte[] body = Gzip(string.Join("\n", batch.Select(File.ReadAllText)));
-
+        await RequestSlotAsync();
         Ticket ticket = await _getTicket();
         try
         {
-            _requests.Add(now);
+            _requests.Add(DateTime.UtcNow);
             string ask = new JsonObject { ["steamId"] = ticket.SteamId, ["ticket"] = ticket.Hex }.ToJsonString();
             using HttpResponseMessage answer = await Http.PostAsync(_endpoint, new StringContent(ask, Encoding.UTF8, "application/json"));
             string text = await answer.Content.ReadAsStringAsync();
