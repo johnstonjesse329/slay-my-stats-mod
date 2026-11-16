@@ -20,7 +20,7 @@ To turn this off, add `"carry_progress": false` to `%APPDATA%\SlayTheSpire2\Slay
 
 ### Backups
 
-Backups of your modded progress are in `%APPDATA%\SlayTheSpire2\SlayMyStatsackups\modded-profileN\`, where N is the profile number. Each is named `progress-<date>-<time>.save` and is a copy of the profile as it was just before the mod changed it. The mod only makes one when it is about to change something, and it never deletes any of your files.
+Backups of your modded progress are in `%APPDATA%\SlayTheSpire2\SlayMyStats\backups\modded-profileN\`, where N is the profile number. Each is named `progress-<date>-<time>.save` and is a copy of the profile as it was just before the mod changed it. The mod only makes one when it is about to change something, and it never deletes any of your files.
 
 To restore one:
 
