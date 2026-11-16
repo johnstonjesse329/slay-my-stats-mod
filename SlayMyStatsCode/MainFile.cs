@@ -72,7 +72,7 @@ public partial class MainFile : Node
     }
 
     /// <summary>The folder this mod was installed to: where its .dll, manifest and config sit.</summary>
-    private static string ModDir()
+    internal static string ModDir()
     {
         string? dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
         if (!string.IsNullOrEmpty(dir)) return dir;
