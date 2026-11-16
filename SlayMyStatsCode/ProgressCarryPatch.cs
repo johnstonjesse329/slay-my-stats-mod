@@ -10,8 +10,8 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// <summary>
 /// With any mod loaded the game switches to a separate save tree (steam\&lt;id&gt;\modded\profileN) that starts
 /// empty, so a player who turns this mod on would lose their unlocks and the ascensions they had reached.
-/// After the game loads that profile's progress, this lifts it to whatever the standard profile of the same
-/// slot has: each character's highest ascension and the furthest state of each unlock (epoch).
+/// After the game loads that profile's progress, this lifts it to the best of all the standard profiles on the
+/// account: each character's highest ascension and the furthest state of each unlock (epoch).
 ///
 /// It only ever raises values, never writes to the standard profile, and can run on every launch. A failure
 /// is logged and leaves the game's own progress as loaded. Turn it off with "carry_progress": false in the
@@ -34,54 +34,60 @@ public static class ProgressCarryPatch
             }
 
             int profile = Traverse.Create(__instance).Field("_profileIdProvider").GetValue<IProfileIdProvider>().CurrentProfileId;
-            string moddedPath = ProgressSaveManager.GetProgressPathForProfile(profile, true);
-            string standardPath = ProgressSaveManager.GetProgressPathForProfile(profile, false);
-            if (moddedPath == standardPath) return;
-
-            string standardFile = ProjectSettings.GlobalizePath(UserDataPathProvider.GetAccountScopedBasePath(null).PathJoin(standardPath));
-            if (!File.Exists(standardFile))
+            string accountDir = ProjectSettings.GlobalizePath(UserDataPathProvider.GetAccountScopedBasePath(null));
+            string[] standardFiles = Directory.Exists(accountDir)
+                ? Directory.GetDirectories(accountDir, "profile*")
+                    .Select(dir => Path.Combine(dir, "saves", "progress.save")).Where(File.Exists).ToArray()
+                : [];
+            if (standardFiles.Length == 0)
             {
-                MainFile.Logger.Info($"Carry-over: no standard progress at {standardFile}.");
+                MainFile.Logger.Info($"Carry-over: no standard progress under {accountDir}.");
                 return;
             }
-            JsonNode? standard = JsonNode.Parse(File.ReadAllText(standardFile));
-            if (standard == null) return;
 
             ProgressState progress = __instance.Progress;
             int raised = 0, unlocked = 0;
 
-            foreach (JsonNode? entry in standard["character_stats"]?.AsArray() ?? [])
+            // Every standard profile counts, whichever slot the modded profile is: the aim is that turning
+            // a mod on never costs the player an ascension or an unlock.
+            foreach (string file in standardFiles)
             {
-                string? id = entry?["id"]?.GetValue<string>();
-                int max = entry?["max_ascension"]?.GetValue<int>() ?? 0;
-                if (id == null || max <= 0) continue;
+                JsonNode? standard = JsonNode.Parse(File.ReadAllText(file));
+                if (standard == null) continue;
 
-                CharacterStats stats = progress.GetOrCreateCharacterStats(ModelId.Deserialize(id));
-                if (stats.MaxAscension >= max) continue;
-                stats.MaxAscension = max;
-                stats.PreferredAscension = entry?["preferred_ascension"]?.GetValue<int>() ?? max;
-                raised++;
-            }
+                foreach (JsonNode? entry in standard["character_stats"]?.AsArray() ?? [])
+                {
+                    string? id = entry?["id"]?.GetValue<string>();
+                    int max = entry?["max_ascension"]?.GetValue<int>() ?? 0;
+                    if (id == null || max <= 0) continue;
 
-            foreach (JsonNode? entry in standard["epochs"]?.AsArray() ?? [])
-            {
-                string? id = entry?["id"]?.GetValue<string>();
-                EpochState state = Rank(entry?["state"]?.GetValue<string>());
-                if (id == null || state == EpochState.None) continue;
+                    CharacterStats stats = progress.GetOrCreateCharacterStats(ModelId.Deserialize(id));
+                    if (stats.MaxAscension >= max) continue;
+                    stats.MaxAscension = max;
+                    stats.PreferredAscension = entry?["preferred_ascension"]?.GetValue<int>() ?? max;
+                    raised++;
+                }
 
-                EpochState current = progress.Epochs.FirstOrDefault(e => e.Id == id)?.State ?? EpochState.None;
-                if (current >= state) continue;
-                progress.ObtainEpochOverride(id, state);
-                unlocked++;
+                foreach (JsonNode? entry in standard["epochs"]?.AsArray() ?? [])
+                {
+                    string? id = entry?["id"]?.GetValue<string>();
+                    EpochState state = Rank(entry?["state"]?.GetValue<string>());
+                    if (id == null || state == EpochState.None) continue;
+
+                    EpochState current = progress.Epochs.FirstOrDefault(e => e.Id == id)?.State ?? EpochState.None;
+                    if (current >= state) continue;
+                    progress.ObtainEpochOverride(id, state);
+                    unlocked++;
+                }
             }
 
             if (raised + unlocked == 0)
             {
-                MainFile.Logger.Info($"Carry-over: nothing to add from standard profile {profile}.");
+                MainFile.Logger.Info($"Carry-over: nothing to add from {standardFiles.Length} standard profiles.");
                 return;
             }
             __instance.SaveProgress();
-            MainFile.Logger.Info($"Carried over from the standard profile {profile}: {raised} character ascensions, {unlocked} unlocks.");
+            MainFile.Logger.Info($"Carried over from {standardFiles.Length} standard profiles into modded profile {profile}: {raised} character ascensions, {unlocked} unlocks.");
         }
         catch (Exception e)
         {
