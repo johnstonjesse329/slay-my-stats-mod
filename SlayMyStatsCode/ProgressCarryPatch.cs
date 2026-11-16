@@ -23,18 +23,27 @@ public static class ProgressCarryPatch
     [HarmonyPostfix]
     public static void Postfix(ProgressSaveManager __instance)
     {
+        MainFile.Logger.Info("Carry-over: progress loaded, checking the standard profile.");
         try
         {
             string userDir = Path.Combine(OS.GetUserDataDir(), MainFile.ModId);
-            if (!ModConfig.CarryProgressEnabled(userDir, MainFile.ModDir())) return;
+            if (!ModConfig.CarryProgressEnabled(userDir, MainFile.ModDir()))
+            {
+                MainFile.Logger.Info("Carry-over is turned off in the config.");
+                return;
+            }
 
             int profile = Traverse.Create(__instance).Field("_profileIdProvider").GetValue<IProfileIdProvider>().CurrentProfileId;
             string moddedPath = ProgressSaveManager.GetProgressPathForProfile(profile, true);
             string standardPath = ProgressSaveManager.GetProgressPathForProfile(profile, false);
             if (moddedPath == standardPath) return;
 
-            string standardFile = ProjectSettings.GlobalizePath(standardPath);
-            if (!File.Exists(standardFile)) return;
+            string standardFile = ProjectSettings.GlobalizePath(UserDataPathProvider.GetAccountScopedBasePath(null).PathJoin(standardPath));
+            if (!File.Exists(standardFile))
+            {
+                MainFile.Logger.Info($"Carry-over: no standard progress at {standardFile}.");
+                return;
+            }
             JsonNode? standard = JsonNode.Parse(File.ReadAllText(standardFile));
             if (standard == null) return;
 
@@ -66,7 +75,11 @@ public static class ProgressCarryPatch
                 unlocked++;
             }
 
-            if (raised + unlocked == 0) return;
+            if (raised + unlocked == 0)
+            {
+                MainFile.Logger.Info($"Carry-over: nothing to add from standard profile {profile}.");
+                return;
+            }
             __instance.SaveProgress();
             MainFile.Logger.Info($"Carried over from the standard profile {profile}: {raised} character ascensions, {unlocked} unlocks.");
         }
