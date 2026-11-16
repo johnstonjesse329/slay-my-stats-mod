@@ -15,7 +15,8 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// character's highest ascension, its win and loss counts when the profile has none (some unlocks depend on
 /// having played) and the furthest state of each unlock (epoch).
 ///
-/// It only ever raises values, never writes to the standard profile, and can run on every launch. A failure
+/// It only ever raises values, copies the modded profile's progress file to a dated backup before changing it,
+/// never writes to the standard profile, and can run on every launch. A failure
 /// is logged and leaves the game's own progress as loaded. Turn it off with "carry_progress": false in the
 /// player's config.json.
 /// </summary>
@@ -48,6 +49,20 @@ public static class ProgressCarryPatch
             }
 
             string[] standardFiles = [standardFile];
+            // A dated copy of the profile as it is on disk, taken before the merge touches anything (the game
+            // saves the merged state on its own from then on). If the copy can't be made, nothing is merged
+            // this launch; if the merge turns out to change nothing, the copy is removed again.
+            string? copy = null;
+            string moddedFile = ProjectSettings.GlobalizePath(UserDataPathProvider.GetAccountScopedBasePath(null)
+                .PathJoin(ProgressSaveManager.GetProgressPathForProfile(profile, true)));
+            if (File.Exists(moddedFile))
+            {
+                string backups = Path.Combine(userDir, "backups", $"modded-profile{profile}");
+                Directory.CreateDirectory(backups);
+                copy = Path.Combine(backups, $"progress-{DateTime.Now:yyyyMMdd-HHmmss}.save");
+                File.Copy(moddedFile, copy);
+            }
+
             ProgressState progress = __instance.Progress;
             int raised = 0, unlocked = 0;
 
@@ -106,6 +121,7 @@ public static class ProgressCarryPatch
 
             if (raised + unlocked == 0)
             {
+                if (copy != null) File.Delete(copy);
                 MainFile.Logger.Info($"Carry-over: nothing to add from standard profile {profile}.");
                 return;
             }
@@ -114,6 +130,7 @@ public static class ProgressCarryPatch
             // reveal it in. Loading the merged state back through the game's own code does exactly that.
             __instance.Progress = ProgressState.FromSerializable(progress.ToSerializable(), new DeserializationContext());
             __instance.SaveProgress();
+            if (copy != null) MainFile.Logger.Info($"Carry-over: the profile before the change is kept at {copy}.");
             MainFile.Logger.Info($"Carried over from standard profile {profile} into modded profile {profile}: {raised} characters raised, {unlocked} unlocks.");
         }
         catch (Exception e)
