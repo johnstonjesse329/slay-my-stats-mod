@@ -4,6 +4,7 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Managers;
+using MegaCrit.Sts2.Core.Saves.Validation;
 
 namespace SlayMyStats.SlayMyStatsCode;
 
@@ -99,6 +100,10 @@ public static class ProgressCarryPatch
                 MainFile.Logger.Info($"Carry-over: nothing to add from {standardFiles.Length} standard profiles.");
                 return;
             }
+            // The game closes gaps in its own timeline when it loads a save: an unlock whose parent is
+            // revealed gets its slot. Carried epochs need the same, or the Fool is earned with no slot to
+            // reveal it in. Loading the merged state back through the game's own code does exactly that.
+            __instance.Progress = ProgressState.FromSerializable(progress.ToSerializable(), new DeserializationContext());
             __instance.SaveProgress();
             MainFile.Logger.Info($"Carried over from {standardFiles.Length} standard profiles into modded profile {profile}: {raised} characters raised, {unlocked} unlocks.");
         }
