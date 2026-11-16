@@ -29,6 +29,30 @@ public sealed class ModConfig
     public Dictionary<string, string> Endpoints { get; set; } = [];
 
     /// <summary>
+    /// Whether to lift a modded profile to the standard one's progress (see ProgressCarryPatch). On unless a
+    /// config file sets "carry_progress": false; the player's file wins over the shipped one.
+    /// </summary>
+    public static bool CarryProgressEnabled(string userFolder, string modFolder)
+    {
+        bool enabled = true;
+        foreach (string file in new[] { Path.Combine(modFolder, FileName), Path.Combine(userFolder, UserFileName) })
+        {
+            try
+            {
+                if (File.Exists(file) && JsonNode.Parse(File.ReadAllText(file)) is JsonObject layer &&
+                    layer["carry_progress"] is JsonValue value && value.TryGetValue(out bool flag))
+                    enabled = flag;
+            }
+            catch (Exception)
+            {
+                // an unreadable file leaves the default
+            }
+        }
+
+        return enabled;
+    }
+
+    /// <summary>
     /// The shipped config with the player's laid over it; null (with the reason logged) if uploads should stay
     /// off.
     /// </summary>
