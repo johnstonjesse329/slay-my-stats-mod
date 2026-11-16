@@ -11,7 +11,7 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// With any mod loaded the game switches to a separate save tree (steam\&lt;id&gt;\modded\profileN) that starts
 /// empty, so a player who turns this mod on would lose their unlocks and the ascensions they had reached.
 /// After the game loads that profile's progress, this lifts it to the best of all the standard profiles on the
-/// account: each character's highest ascension and the furthest state of each unlock (epoch).
+/// account: each character's highest ascension, its win and loss counts (some unlocks depend on having played) and the furthest state of each unlock (epoch).
 ///
 /// It only ever raises values, never writes to the standard profile, and can run on every launch. A failure
 /// is logged and leaves the game's own progress as loaded. Turn it off with "carry_progress": false in the
@@ -58,14 +58,27 @@ public static class ProgressCarryPatch
                 foreach (JsonNode? entry in standard["character_stats"]?.AsArray() ?? [])
                 {
                     string? id = entry?["id"]?.GetValue<string>();
+                    if (id == null) continue;
+
                     int max = entry?["max_ascension"]?.GetValue<int>() ?? 0;
-                    if (id == null || max <= 0) continue;
+                    int wins = entry?["total_wins"]?.GetValue<int>() ?? 0;
+                    int losses = entry?["total_losses"]?.GetValue<int>() ?? 0;
+                    if (max <= 0 && wins <= 0 && losses <= 0) continue;
 
                     CharacterStats stats = progress.GetOrCreateCharacterStats(ModelId.Deserialize(id));
-                    if (stats.MaxAscension >= max) continue;
-                    stats.MaxAscension = max;
-                    stats.PreferredAscension = entry?["preferred_ascension"]?.GetValue<int>() ?? max;
-                    raised++;
+                    bool changed = false;
+                    if (stats.MaxAscension < max)
+                    {
+                        stats.MaxAscension = max;
+                        stats.PreferredAscension = entry?["preferred_ascension"]?.GetValue<int>() ?? max;
+                        changed = true;
+                    }
+
+                    // Played-at-all counts decide some unlocks (the game opens the Fool once Defect has a run
+                    // on record), so they are carried like the ascensions.
+                    if (stats.TotalWins < wins) { stats.TotalWins = wins; changed = true; }
+                    if (stats.TotalLosses < losses) { stats.TotalLosses = losses; changed = true; }
+                    if (changed) raised++;
                 }
 
                 foreach (JsonNode? entry in standard["epochs"]?.AsArray() ?? [])
@@ -87,7 +100,7 @@ public static class ProgressCarryPatch
                 return;
             }
             __instance.SaveProgress();
-            MainFile.Logger.Info($"Carried over from {standardFiles.Length} standard profiles into modded profile {profile}: {raised} character ascensions, {unlocked} unlocks.");
+            MainFile.Logger.Info($"Carried over from {standardFiles.Length} standard profiles into modded profile {profile}: {raised} characters raised, {unlocked} unlocks.");
         }
         catch (Exception e)
         {
