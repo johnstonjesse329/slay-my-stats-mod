@@ -11,8 +11,9 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// <summary>
 /// With any mod loaded the game switches to a separate save tree (steam\&lt;id&gt;\modded\profileN) that starts
 /// empty, so a player who turns this mod on would lose their unlocks and the ascensions they had reached.
-/// After the game loads that profile's progress, this lifts it to the best of all the standard profiles on the
-/// account: each character's highest ascension, its win and loss counts (some unlocks depend on having played) and the furthest state of each unlock (epoch).
+/// After the game loads that profile's progress, this lifts it to the standard profile with the same number: each
+/// character's highest ascension, its win and loss counts when the profile has none (some unlocks depend on
+/// having played) and the furthest state of each unlock (epoch).
 ///
 /// It only ever raises values, never writes to the standard profile, and can run on every launch. A failure
 /// is logged and leaves the game's own progress as loaded. Turn it off with "carry_progress": false in the
@@ -35,22 +36,22 @@ public static class ProgressCarryPatch
             }
 
             int profile = Traverse.Create(__instance).Field("_profileIdProvider").GetValue<IProfileIdProvider>().CurrentProfileId;
-            string accountDir = ProjectSettings.GlobalizePath(UserDataPathProvider.GetAccountScopedBasePath(null));
-            string[] standardFiles = Directory.Exists(accountDir)
-                ? Directory.GetDirectories(accountDir, "profile*")
-                    .Select(dir => Path.Combine(dir, "saves", "progress.save")).Where(File.Exists).ToArray()
-                : [];
-            if (standardFiles.Length == 0)
+            // Slot N of the standard profiles is slot N of the modded ones: the game picks both by the same
+            // number, so each person's modded profile is lifted by their own standard progress and nobody
+            // else's.
+            string standardPath = ProgressSaveManager.GetProgressPathForProfile(profile, false);
+            string standardFile = ProjectSettings.GlobalizePath(UserDataPathProvider.GetAccountScopedBasePath(null).PathJoin(standardPath));
+            if (ProgressSaveManager.GetProgressPathForProfile(profile, true) == standardPath || !File.Exists(standardFile))
             {
-                MainFile.Logger.Info($"Carry-over: no standard progress under {accountDir}.");
+                MainFile.Logger.Info($"Carry-over: no standard progress for profile {profile} at {standardFile}.");
                 return;
             }
 
+            string[] standardFiles = [standardFile];
             ProgressState progress = __instance.Progress;
             int raised = 0, unlocked = 0;
 
-            // Every standard profile counts, whichever slot the modded profile is: the aim is that turning
-            // a mod on never costs the player an ascension or an unlock.
+            // The aim is that turning a mod on never costs the player an ascension or an unlock.
             foreach (string file in standardFiles)
             {
                 JsonNode? standard = JsonNode.Parse(File.ReadAllText(file));
@@ -70,15 +71,23 @@ public static class ProgressCarryPatch
                     bool changed = false;
                     if (stats.MaxAscension < max)
                     {
+                        // The player's chosen ascension stays; a character the profile hasn't touched takes
+                        // the standard one.
+                        if (stats.MaxAscension == 0 && stats.PreferredAscension == 0)
+                            stats.PreferredAscension = entry?["preferred_ascension"]?.GetValue<int>() ?? max;
                         stats.MaxAscension = max;
-                        stats.PreferredAscension = entry?["preferred_ascension"]?.GetValue<int>() ?? max;
                         changed = true;
                     }
 
-                    // Played-at-all counts decide some unlocks (the game opens the Fool once Defect has a run
-                    // on record), so they are carried like the ascensions.
-                    if (stats.TotalWins < wins) { stats.TotalWins = wins; changed = true; }
-                    if (stats.TotalLosses < losses) { stats.TotalLosses = losses; changed = true; }
+                    // Only a character with no runs on record here takes the standard counts. Some unlocks
+                    // depend on having played (the game opens the Fool once Defect has a run), but counts a
+                    // profile has already built up are its own and are left alone.
+                    if (stats.TotalWins + stats.TotalLosses == 0 && wins + losses > 0)
+                    {
+                        stats.TotalWins = wins;
+                        stats.TotalLosses = losses;
+                        changed = true;
+                    }
                     if (changed) raised++;
                 }
 
@@ -97,7 +106,7 @@ public static class ProgressCarryPatch
 
             if (raised + unlocked == 0)
             {
-                MainFile.Logger.Info($"Carry-over: nothing to add from {standardFiles.Length} standard profiles.");
+                MainFile.Logger.Info($"Carry-over: nothing to add from standard profile {profile}.");
                 return;
             }
             // The game closes gaps in its own timeline when it loads a save: an unlock whose parent is
@@ -105,7 +114,7 @@ public static class ProgressCarryPatch
             // reveal it in. Loading the merged state back through the game's own code does exactly that.
             __instance.Progress = ProgressState.FromSerializable(progress.ToSerializable(), new DeserializationContext());
             __instance.SaveProgress();
-            MainFile.Logger.Info($"Carried over from {standardFiles.Length} standard profiles into modded profile {profile}: {raised} characters raised, {unlocked} unlocks.");
+            MainFile.Logger.Info($"Carried over from standard profile {profile} into modded profile {profile}: {raised} characters raised, {unlocked} unlocks.");
         }
         catch (Exception e)
         {
