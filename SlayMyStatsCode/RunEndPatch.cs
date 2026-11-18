@@ -29,7 +29,7 @@ public static class RunEndPatch
             JsonArray mods = LoadedMods();
             JsonObject? telemetry = EventLog.Take();
             JsonArray? maps = MapLog.Take();
-            MainFile.Logger.Info($"Run ended: {history.StartTime}.run win={history.Win} abandoned={history.WasAbandoned}. Queuing it for upload.");
+            MainFile.Logger.Info($"Run ended: {history.StartTime}.run win={history.Win} abandoned={history.WasAbandoned}.");
 
             string steamDir = Path.Combine(Godot.OS.GetUserDataDir(), "steam");
             long start = history.StartTime;
@@ -46,6 +46,7 @@ public static class RunEndPatch
                             MainFile.Logger.Info($"Run {start} (profile {profile ?? "unknown"}) isn't on the config's profile list; not uploading it.");
                             return;
                         }
+                        MainFile.Logger.Info($"Run {start}: queuing it for upload.");
                         uploader.Enqueue(json, mods, telemetry, maps, profile);
                         await uploader.DrainAsync();
                     }

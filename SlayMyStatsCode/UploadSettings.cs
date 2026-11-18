@@ -27,7 +27,7 @@ public sealed record UploadSettings(bool Enabled, HashSet<string>? Profiles, boo
     private static string? _loggedError;
 
     /// <summary>The config's problem, if its last read found one, with where to look. For the main-menu notice.</summary>
-    public static string? Notice => _error is null ? null : $"Slay My Stats: config error, uploads paused – see {_errorPath}";
+    public static string? Notice => _error is null ? null : $"Slay My Stats: config error, uploads paused";
 
     private static string _errorPath = "";
 
