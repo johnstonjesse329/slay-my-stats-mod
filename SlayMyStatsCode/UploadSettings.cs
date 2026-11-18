@@ -20,7 +20,9 @@ public sealed record UploadSettings(bool Enabled, HashSet<string>? Profiles, boo
 {
     public const string ErrorFileName = "slay-my-stats-config-error.txt";
 
-    private const string Defaults = "{\n  \"uploadsEnabled\": true,\n  \"profiles\": \"all\",\n  \"shareMultiplayerIds\": true\n}\n";
+    // carry_progress isn't read here (ModConfig reads it); it's in the defaults so players can see the setting.
+    private const string Defaults =
+        "{\n  \"uploadsEnabled\": true,\n  \"profiles\": \"all\",\n  \"shareMultiplayerIds\": true,\n  \"carry_progress\": true\n}\n";
 
     // The newest read, for the main-menu notice: null when the config is fine.
     private static string? _error;

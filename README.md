@@ -28,7 +28,8 @@ The file holds one JSON object. Keep the commas between lines, and the quotes ar
 {
   "uploadsEnabled": true,
   "profiles": "all",
-  "shareMultiplayerIds": true
+  "shareMultiplayerIds": true,
+  "carry_progress": true
 }
 ```
 
@@ -37,6 +38,7 @@ The file holds one JSON object. Keep the commas between lines, and the quotes ar
 - `uploadsEnabled` (default `true`): `false` stops all uploads. Set it back to `true` and the mod sends what it skipped, at the end of your next run or the next time you launch the game.
 - `profiles` (default `"all"`): which of your game profiles may upload. `"all"`, or a list such as `["profile1"]` or `["profile1", "profile3"]` (`[1, 3]` works too). A profile is one of the game's three save slots; profile 1 is the first. Runs from a profile that isn't listed never upload.
 - `shareMultiplayerIds` (default `true`): `false` blanks your co-op partners' Steam IDs in a run before it is sent. Your own ID stays, so the site can tell which player you are. With it off, the site can't link your co-op run to the other players' copies.
+- `carry_progress` (default `true`): `false` stops the mod lifting your modded profiles to your normal ones (see [Your saves](#your-saves)).
 
 For example, to upload only profile 1 and keep your co-op partners' IDs private:
 
@@ -60,7 +62,7 @@ If the file can't be read, **nothing uploads** until it is fixed. The main menu 
 
 With any mod loaded, the game keeps its saves in a separate "modded" folder, and it starts empty. So that you don't have to replay ascensions or unlock everything again, Slay My Stats lifts each modded profile to your normal profile in the same slot. Each character's highest ascension, any wins and losses the modded profile doesn't have yet, and your unlocks all carry over. It only ever raises things, and it never changes your normal saves.
 
-To turn this off, add `"carry_progress": false` to `config.json` (see [Changing a setting](#changing-a-setting)). Unsubscribe and the game goes back to your normal saves.
+To turn this off, set `"carry_progress"` to `false` in `config.json` (see [Changing a setting](#changing-a-setting)). Unsubscribe and the game goes back to your normal saves.
 
 ### Backups
 
@@ -72,7 +74,7 @@ To restore one:
 2. Open `%APPDATA%\SlayTheSpire2\steam\<your Steam ID>\modded\profileN\saves\`. Rename `progress.save` to `progress.save.old`. That keeps what you have now.
 3. Copy the backup you want from the backups folder into this folder. Leave the original backup where it is.
 4. Rename the copy to `progress.save`.
-5. If you don't want the mod to raise the profile again on the next launch, add `"carry_progress": false` to `config.json` before starting the game.
+5. If you don't want the mod to raise the profile again on the next launch, set `"carry_progress"` to `false` in `config.json` before starting the game.
 
 Steam Cloud may keep its own copy of your saves. The backups folder is not synced.
 
