@@ -14,19 +14,17 @@ saves it, with a log of each fight. Runs you played unmodded before installing i
 
 ## Choosing what uploads
 
-The mod keeps its settings in `%APPDATA%\SlayTheSpire2\SlayMyStats\config.json` and creates the file with the defaults the first time it runs. It reads the file again before each upload batch, so a change applies without restarting the game.
+The mod keeps its settings in `%APPDATA%\SlayTheSpire2\SlayMyStats\config.json` and creates the file with the defaults the first time it runs. It reads the file again before each upload batch, so a change applies without restarting the game. There are two settings:
 
 - `uploadsEnabled` (default `true`): `false` stops all uploads. Turn it back on and the mod sends anything it skipped.
 - `profiles` (default `"all"`): `"all"`, or a list of profiles such as `["profile1"]`. Only runs from these profiles upload.
-- `shareMultiplayerIds` (default `true`): `false` removes your co-op partners' Steam IDs from a run before it is sent. Yours stays.
 
-For example, to upload only profile 1 and keep your co-op partners' IDs private:
+For example, to upload only profile 1:
 
 ```json
 {
   "uploadsEnabled": true,
-  "profiles": ["profile1"],
-  "shareMultiplayerIds": false
+  "profiles": ["profile1"]
 }
 ```
 
