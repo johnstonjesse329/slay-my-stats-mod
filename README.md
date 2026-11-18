@@ -14,11 +14,29 @@ saves it, with a log of each fight. Runs you played unmodded before installing i
 
 ## Choosing what uploads
 
-The mod keeps its settings in `%APPDATA%\SlayTheSpire2\SlayMyStats\config.json` and creates the file with the defaults the first time it runs. It reads the file again before each upload batch, so a change applies without restarting the game.
+By default the mod uploads every run from every profile, and includes your co-op partners' Steam IDs so the site can link a co-op run to each player's copy of it. Three settings change that.
 
-- `uploadsEnabled` (default `true`): `false` stops all uploads. Turn it back on and the mod sends anything it skipped.
-- `profiles` (default `"all"`): `"all"`, or a list of profiles such as `["profile1"]`. Only runs from these profiles upload.
-- `shareMultiplayerIds` (default `true`): `false` removes your co-op partners' Steam IDs from a run before it is sent. Yours stays.
+### Changing a setting
+
+1. Press Win+R, paste `%APPDATA%\SlayTheSpire2\SlayMyStats` and press Enter.
+2. Open `config.json` in Notepad. The mod creates it with the defaults the first time it runs; if it isn't there yet, start the game once with the mod on.
+3. Change a value and save. You don't need to restart the game: the mod reads the file again before each upload batch.
+
+The file holds one JSON object. Keep the commas between lines, and the quotes around names and text:
+
+```json
+{
+  "uploadsEnabled": true,
+  "profiles": "all",
+  "shareMultiplayerIds": true
+}
+```
+
+### The settings
+
+- `uploadsEnabled` (default `true`): `false` stops all uploads. Set it back to `true` and the mod sends what it skipped, at the end of your next run or the next time you launch the game.
+- `profiles` (default `"all"`): which of your game profiles may upload. `"all"`, or a list such as `["profile1"]` or `["profile1", "profile3"]` (`[1, 3]` works too). A profile is one of the game's three save slots; profile 1 is the first. Runs from a profile that isn't listed never upload.
+- `shareMultiplayerIds` (default `true`): `false` blanks your co-op partners' Steam IDs in a run before it is sent. Your own ID stays, so the site can tell which player you are. With it off, the site can't link your co-op run to the other players' copies.
 
 For example, to upload only profile 1 and keep your co-op partners' IDs private:
 
@@ -30,7 +48,13 @@ For example, to upload only profile 1 and keep your co-op partners' IDs private:
 }
 ```
 
-A run the settings skip is not marked as uploaded, so a later backfill sends it once they allow it. If the file can't be read, nothing uploads until it is fixed. The main menu shows "Slay My Stats: config error, uploads paused", `slay-my-stats-config-error.txt` next to the config holds the exact error (it is deleted once the file reads correctly), and the log has it too.
+### What happens to runs the settings skip
+
+A skipped run isn't marked as uploaded, so it goes out later if you change the settings to allow it (runs from before you installed the mod are picked up when you launch the game). Runs already on the site are not removed when you change a setting.
+
+### If the file has a mistake
+
+If the file can't be read, **nothing uploads** until it is fixed. The main menu shows "Slay My Stats: config error, uploads paused". `slay-my-stats-config-error.txt`, next to the config, holds the exact error and the line, and the game log has it too. Fix the file, or delete it to get the defaults back. Once the file reads correctly, uploads resume at the end of your next run or the next time you launch the game.
 
 ## Your saves
 
