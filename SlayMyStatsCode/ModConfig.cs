@@ -74,8 +74,19 @@ public sealed class ModConfig
             JsonObject merged = [];
             foreach (string file in found)
             {
-                if (JsonNode.Parse(File.ReadAllText(file)) is not JsonObject layer)
-                    throw new JsonException($"{file} isn't a JSON object");
+                JsonObject? layer;
+                try
+                {
+                    layer = JsonNode.Parse(File.ReadAllText(file)) as JsonObject;
+                    if (layer == null) throw new JsonException($"{file} isn't a JSON object");
+                }
+                catch (JsonException e) when (file == paths[1])
+                {
+                    // The player's own file is checked by UploadSettings, which holds uploads and reports it. Skipping
+                    // it here keeps the shipped endpoints, so uploads resume as soon as the file is fixed.
+                    log($"Ignoring {file} ({e.Message}); UploadSettings reports it.");
+                    continue;
+                }
                 foreach ((string key, JsonNode? value) in layer.ToList())
                 {
                     layer.Remove(key);
