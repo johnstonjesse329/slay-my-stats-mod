@@ -58,9 +58,12 @@ public static class Program
             }
 
             Uri endpoint = new(args[1]);
+            string? configDir = Take(rest, "--config");
+            string? profile = Take(rest, "--profile");
+            Func<UploadSettings>? settings = configDir == null ? null : () => UploadSettings.Read(configDir, Console.WriteLine);
             return claim != null
-                ? await Upload(endpoint, rest, () => Task.FromResult(new Uploader.Ticket(claim, new string('0', 64), () => { })))
-                : await WithSteam(() => Upload(endpoint, rest, SteamTicket.GetAsync));
+                ? await Upload(endpoint, rest, () => Task.FromResult(new Uploader.Ticket(claim, new string('0', 64), () => { })), settings, profile)
+                : await WithSteam(() => Upload(endpoint, rest, SteamTicket.GetAsync, settings, profile));
         }
 
         if (args is ["backfill", var url, var steamDir])
@@ -75,11 +78,26 @@ public static class Program
         return 2;
     }
 
-    private static async Task<int> Upload(Uri endpoint, List<string> runFiles, Func<Task<Uploader.Ticket>> getTicket)
+    private static string? Take(List<string> rest, string flag)
+    {
+        int i = rest.IndexOf(flag);
+        if (i < 0 || i + 1 >= rest.Count) return null;
+        string value = rest[i + 1];
+        rest.RemoveRange(i, 2);
+        return value;
+    }
+
+    private static async Task<int> Upload(Uri endpoint, List<string> runFiles, Func<Task<Uploader.Ticket>> getTicket,
+        Func<UploadSettings>? settings = null, string? profile = null)
     {
         string queueDir = Path.Combine(Path.GetTempPath(), "SlayMyStatsProbe", Guid.NewGuid().ToString("N"));
-        Uploader uploader = new(endpoint, queueDir, getTicket, Console.WriteLine, "probe");
-        foreach (string file in runFiles) uploader.Enqueue(File.ReadAllText(file), mods: []);  // no game, so no mods to report
+        Uploader uploader = new(endpoint, queueDir, getTicket, Console.WriteLine, "probe", settings);
+        foreach (string file in runFiles)
+        {
+            // as the run-end hook does: a run whose profile the config leaves out is never queued
+            if (uploader.Wants(profile)) uploader.Enqueue(File.ReadAllText(file), mods: [], profile: profile);  // no game, so no mods to report
+            else Console.WriteLine($"{Path.GetFileName(file)}: profile {profile ?? "unknown"} isn't on the list; not queued.");
+        }
 
         await uploader.DrainAsync();
 
