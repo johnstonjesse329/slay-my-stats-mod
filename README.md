@@ -20,7 +20,7 @@ By default the mod uploads every run from every profile, exactly as the game sav
 
 1. Press Win+R, paste `%APPDATA%\SlayTheSpire2\SlayMyStats` and press Enter.
 2. Open `config.json` in Notepad. The mod creates it with the defaults the first time it runs; if it isn't there yet, start the game once with the mod on.
-3. Change a value and save. You don't need to restart the game: the mod reads the file again before each upload batch.
+3. Change a value and save.
 
 The file holds one JSON object. Keep the commas between lines, and the quotes around names and text:
 
