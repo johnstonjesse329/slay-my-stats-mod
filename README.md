@@ -60,7 +60,7 @@ If the file can't be read, **nothing uploads** until it is fixed. The main menu 
 
 ## Your saves
 
-With any mod loaded, the game keeps its saves in a separate "modded" folder, and it starts empty. So that you don't have to replay ascensions or unlock everything again, Slay My Stats lifts each modded profile to your normal profile in the same slot. Each character's highest ascension, any wins and losses the modded profile doesn't have yet, and your unlocks all carry over. It only ever raises things, and it never changes your normal saves.
+With any mod loaded, the game keeps its saves in a separate "modded" folder, and it starts empty. So that you don't have to replay ascensions or unlock everything again, Slay My Stats lifts each modded profile to your normal profile in the same slot. Each character's highest ascension, your highest multiplayer ascension, any wins and losses the modded profile doesn't have yet, and your unlocks all carry over. It only ever raises things, and it never changes your normal saves.
 
 To turn this off, set `"carry_progress"` to `false` in `config.json` (see [Changing a setting](#changing-a-setting)). Unsubscribe and the game goes back to your normal saves.
 

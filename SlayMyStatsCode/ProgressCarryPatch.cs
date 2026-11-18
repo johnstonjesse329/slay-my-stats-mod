@@ -13,7 +13,8 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// empty, so a player who turns this mod on would lose their unlocks and the ascensions they had reached.
 /// After the game loads that profile's progress, this lifts it to the standard profile with the same number: each
 /// character's highest ascension, its win and loss counts when the profile has none (some unlocks depend on
-/// having played) and the furthest state of each unlock (epoch).
+/// having played), the profile's highest multiplayer ascension and the furthest state of each unlock (epoch).
+/// Blitz ascension is left alone: only the modded save has it.
 ///
 /// It only ever raises values, copies the modded profile's progress file to a dated backup before changing it (only when something
 /// will change, and nothing is ever deleted),
@@ -93,7 +94,14 @@ public static class ProgressCarryPatch
                 if (current < state) epochs.Add((id, state));
             }
 
-            if (characters.Count + epochs.Count == 0)
+            // Multiplayer ascension is one value for the whole profile, not per character. Same rule as a
+            // character: raise the max, and take the standard preferred one only if this profile has neither.
+            int mpMax = standard["max_multiplayer_ascension"]?.GetValue<int>() ?? 0;
+            bool raiseMp = progress.MaxMultiplayerAscension < mpMax;
+            int mpPreferred = raiseMp && progress.MaxMultiplayerAscension == 0 && progress.PreferredMultiplayerAscension == 0
+                ? standard["preferred_multiplayer_ascension"]?.GetValue<int>() ?? mpMax : -1;
+
+            if (characters.Count + epochs.Count == 0 && !raiseMp)
             {
                 MainFile.Logger.Info($"Carry-over: nothing to add from standard profile {profile}.");
                 return;
@@ -121,6 +129,8 @@ public static class ProgressCarryPatch
                 if (c.Wins >= 0) { stats.TotalWins = c.Wins; stats.TotalLosses = c.Losses; }
             }
             foreach (var e in epochs) progress.ObtainEpochOverride(e.Id, e.State);
+            if (mpPreferred >= 0) progress.PreferredMultiplayerAscension = mpPreferred;
+            if (raiseMp) progress.MaxMultiplayerAscension = mpMax;
 
             // The game closes gaps in its own timeline when it loads a save: an unlock whose parent is
             // revealed gets its slot. Carried epochs need the same, or the Fool is earned with no slot to
@@ -128,7 +138,8 @@ public static class ProgressCarryPatch
             __instance.Progress = ProgressState.FromSerializable(progress.ToSerializable(), new DeserializationContext());
             __instance.SaveProgress();
             if (copy != null) MainFile.Logger.Info($"Carry-over: the profile before the change is kept at {copy}.");
-            MainFile.Logger.Info($"Carried over from standard profile {profile} into modded profile {profile}: {characters.Count} characters raised, {epochs.Count} unlocks.");
+            MainFile.Logger.Info($"Carried over from standard profile {profile} into modded profile {profile}: {characters.Count} characters raised, {epochs.Count} unlocks" +
+                (raiseMp ? $", multiplayer ascension {mpMax}." : "."));
         }
         catch (Exception e)
         {
