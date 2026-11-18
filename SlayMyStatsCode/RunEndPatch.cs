@@ -31,13 +31,22 @@ public static class RunEndPatch
             JsonArray? maps = MapLog.Take();
             MainFile.Logger.Info($"Run ended: {history.StartTime}.run win={history.Win} abandoned={history.WasAbandoned}. Queuing it for upload.");
 
+            string steamDir = Path.Combine(Godot.OS.GetUserDataDir(), "steam");
+            long start = history.StartTime;
             foreach (Uploader uploader in MainFile.Uploaders)
             {
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        uploader.Enqueue(json, mods, telemetry, maps);
+                        // The game has just written the history file; its folder says which profile played it.
+                        string? profile = ProfileOf(steamDir, start);
+                        if (!uploader.Wants(profile))
+                        {
+                            MainFile.Logger.Info($"Run {start} (profile {profile ?? "unknown"}) isn't on the config's profile list; not uploading it.");
+                            return;
+                        }
+                        uploader.Enqueue(json, mods, telemetry, maps, profile);
                         await uploader.DrainAsync();
                     }
                     catch (Exception e)
@@ -54,6 +63,27 @@ public static class RunEndPatch
         {
             MainFile.Logger.Error($"Run-end hook failed: {e}");
         }
+    }
+
+    /// <summary>The profile ("profile1") whose history folder holds <paramref name="start"/>.run, standard or modded.</summary>
+    private static string? ProfileOf(string steamDir, long start)
+    {
+        try
+        {
+            foreach (string file in Directory.GetFiles(steamDir, $"{start}.run", SearchOption.AllDirectories))
+            {
+                if (Path.GetFileName(Path.GetDirectoryName(file)) != "history") continue;
+                // …\<profile>\saves\history\<start>.run
+                string? profile = Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(file))));
+                if (profile != null && profile.StartsWith("profile", StringComparison.OrdinalIgnoreCase)) return profile;
+            }
+        }
+        catch (Exception e)
+        {
+            MainFile.Logger.Error($"Couldn't tell which profile run {start} was played on: {e.Message}");
+        }
+
+        return null;
     }
 
     /// <summary>

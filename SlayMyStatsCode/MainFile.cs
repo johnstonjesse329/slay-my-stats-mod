@@ -45,13 +45,16 @@ public partial class MainFile : Node
         {
             string modDir = ModDir();
             string userDir = Path.Combine(OS.GetUserDataDir(), ModId);
+            // Reads (and, if missing, creates) the player's upload settings now, so a mistake in them is reported at launch.
+            UploadSettings.Read(userDir, message => Logger.Info(message));
             ModConfig? config = ModConfig.Load(userDir, modDir, message => Logger.Info(message));
             foreach ((string name, string url) in config?.Endpoints ?? [])
             {
                 // Separate queues, so a site that is down or says no never holds runs back from the others.
                 string queueDir = Path.Combine(userDir, "queue", name);
                 Uploaders.Add(new Uploader(new Uri(url), queueDir, SteamTicket.GetAsync,
-                    message => Logger.Info($"[{name}] {message}"), Version(modDir)));
+                    message => Logger.Info($"[{name}] {message}"), Version(modDir),
+                    () => UploadSettings.Read(userDir, message => Logger.Info(message))));
                 sites.Add(name);
             }
 

@@ -12,6 +12,26 @@ Subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedet
 Your Steam ID, a short-lived Steam ticket that says this Steam account is playing, and each run as the game
 saves it, with a log of each fight. Runs you played unmodded before installing it are sent too.
 
+## Choosing what uploads
+
+The mod keeps its settings in `%APPDATA%\SlayTheSpire2\SlayMyStats\config.json` and creates the file with the defaults the first time it runs. It reads the file again before each upload batch, so a change applies without restarting the game.
+
+- `uploadsEnabled` (default `true`): `false` stops all uploads. Turn it back on and the mod sends anything it skipped.
+- `profiles` (default `"all"`): `"all"`, or a list of profiles such as `["profile1"]`. Only runs from these profiles upload.
+- `shareMultiplayerIds` (default `true`): `false` removes your co-op partners' Steam IDs from a run before it is sent. Yours stays.
+
+For example, to upload only profile 1 and keep your co-op partners' IDs private:
+
+```json
+{
+  "uploadsEnabled": true,
+  "profiles": ["profile1"],
+  "shareMultiplayerIds": false
+}
+```
+
+A run the settings skip is not marked as uploaded, so a later backfill sends it once they allow it. If the file can't be read, nothing uploads until it is fixed. The main menu shows "Slay My Stats: config error, uploads paused", `slay-my-stats-config-error.txt` next to the config holds the exact error (it is deleted once the file reads correctly), and the log has it too.
+
 ## Your saves
 
 With any mod loaded, the game keeps its saves in a separate "modded" folder, and it starts empty. So that you don't have to replay ascensions or unlock everything again, Slay My Stats lifts each modded profile to your normal profile in the same slot. Each character's highest ascension, any wins and losses the modded profile doesn't have yet, and your unlocks all carry over. It only ever raises things, and it never changes your normal saves.

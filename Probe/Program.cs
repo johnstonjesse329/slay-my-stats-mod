@@ -6,6 +6,9 @@ namespace SlayMyStats.Probe;
 /// <summary>
 /// Tries the mod's upload path without the game: the same Uploader and SteamTicket code, run from a console.
 ///
+///   SlayMyStatsProbe config <folder>
+///       Read the upload settings (config.json) in the folder as the mod does, creating it if missing.
+///
 ///   SlayMyStatsProbe ticket
 ///       Ask Steam for a ticket and say whether one came back. Sends nothing anywhere.
 ///
@@ -24,6 +27,14 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        if (args is ["config", var folder])
+        {
+            UploadSettings settings = UploadSettings.Read(folder, Console.WriteLine);
+            Console.WriteLine($"enabled={settings.Enabled} profiles={(settings.Profiles == null ? "all" : string.Join(",", settings.Profiles))} " +
+                              $"shareIds={settings.ShareMultiplayerIds} error={settings.Error ?? "none"} notice={UploadSettings.Notice ?? "none"}");
+            return 0;
+        }
+
         if (args is ["ticket"])
         {
             return await WithSteam(async () =>

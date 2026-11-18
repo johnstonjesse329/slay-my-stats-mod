@@ -35,7 +35,7 @@ public sealed class Uploader
     private const int MaxUploadBytes = 1_000_000;
     private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5)];
 
-    private enum Outcome { Sent, Retry, Stop }
+    private enum Outcome { Sent, Retry, Stop, Hold }
 
     // The steam folder again when the last backfill found more missing runs than the queue had room for.
     private string? _backfillMore;
@@ -43,6 +43,7 @@ public sealed class Uploader
     // Every run this uploader has sent, one start time per line, kept beside the queue. A run the site took but
     // didn't keep (one its parser rejects) is never backfilled again because of it.
     private const string SentFile = "sent.txt";
+    private const string ProfileKey = "slay_my_stats_profile";
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
@@ -51,6 +52,7 @@ public sealed class Uploader
     private readonly Func<Task<Ticket>> _getTicket;
     private readonly Action<string> _log;
     private readonly string _modVersion;
+    private readonly Func<UploadSettings> _settings;
     private readonly List<DateTime> _requests = [];
     private int _batchSize = MaxRunsPerUpload;
     private int _running;
@@ -58,8 +60,10 @@ public sealed class Uploader
     private bool _stopped;
     private string? _backfillFrom;
 
-    public Uploader(Uri endpoint, string queueDir, Func<Task<Ticket>> getTicket, Action<string> log, string modVersion)
+    public Uploader(Uri endpoint, string queueDir, Func<Task<Ticket>> getTicket, Action<string> log, string modVersion,
+        Func<UploadSettings>? settings = null)
     {
+        _settings = settings ?? (() => new UploadSettings(true, null, true, null));
         _endpoint = endpoint;
         _queueDir = queueDir;
         _getTicket = getTicket;
@@ -75,9 +79,11 @@ public sealed class Uploader
     /// </summary>
     /// <param name="mods">The loaded mods, or null for a run from history, which went unwatched: it is sent like a
     /// run uploaded from files, saying nothing about mods.</param>
-    public void Enqueue(string runJson, JsonArray? mods, JsonObject? telemetry = null, JsonArray? maps = null)
+    public void Enqueue(string runJson, JsonArray? mods, JsonObject? telemetry = null, JsonArray? maps = null, string? profile = null)
     {
         JsonObject run = JsonNode.Parse(runJson)?.AsObject() ?? throw new JsonException("not a run");
+        // Which profile played it, for the config's profile list when the run is sent; removed before then.
+        if (profile != null) run[ProfileKey] = profile;
         if (mods != null)
         {
             JsonObject note = new() { ["version"] = _modVersion, ["mods"] = mods.DeepClone() };
@@ -97,6 +103,17 @@ public sealed class Uploader
         string path = Path.Combine(_queueDir, $"{name}.json");
         File.WriteAllText(path + ".tmp", run.ToJsonString());
         File.Move(path + ".tmp", path, overwrite: true);
+    }
+
+    /// <summary>
+    /// Whether a run from <paramref name="profile"/> is worth queueing: not when the config's profile list leaves it
+    /// out. (A broken config can't say, so the run is kept and checked again when it is sent.) A skipped run is
+    /// not marked as sent, so the backfill picks it up if the list later includes it.
+    /// </summary>
+    public bool Wants(string? profile)
+    {
+        UploadSettings settings = _settings();
+        return settings.Error != null || settings.Profiles == null || (profile != null && settings.Profiles.Contains(profile));
     }
 
     /// <summary>
@@ -140,7 +157,8 @@ public sealed class Uploader
                 }
             }
 
-            if (Interlocked.Exchange(ref _backfillFrom, null) is { } steamDir) await Backfill(steamDir);
+            // While uploads are paused the backfill waits, so it still happens once they are turned back on.
+            if (!_settings().Paused && Interlocked.Exchange(ref _backfillFrom, null) is { } steamDir) await Backfill(steamDir);
 
             int attempt = 0;
             while (!_stopped)
@@ -169,6 +187,10 @@ public sealed class Uploader
                 if (outcome == Outcome.Sent)
                 {
                     attempt = 0;
+                }
+                else if (outcome == Outcome.Hold)
+                {
+                    return;
                 }
                 else if (outcome == Outcome.Stop)
                 {
@@ -221,6 +243,7 @@ public sealed class Uploader
             .Where(f => Path.GetRelativePath(accountDir, f).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0] != "modded")
             .Select(f => (Ok: long.TryParse(Path.GetFileNameWithoutExtension(f), out long start), Start: start, Path: f))
             .Where(r => r.Ok && !have.Contains(r.Start) && !skip.Contains(r.Start.ToString()))
+            .Where(r => Wants(ProfileOf(accountDir, r.Path)))
             .DistinctBy(r => r.Start)
             .OrderBy(r => r.Start)
             .Select(r => (r.Start, r.Path))
@@ -232,7 +255,7 @@ public sealed class Uploader
         {
             try
             {
-                Enqueue(File.ReadAllText(path), mods: null);
+                Enqueue(File.ReadAllText(path), mods: null, profile: ProfileOf(accountDir, path));
                 added++;
             }
             catch (JsonException)
@@ -246,6 +269,13 @@ public sealed class Uploader
             : $"The site is missing {missing.Count} run(s) from the game's history; queued {added}" +
               (missing.Count > room ? ", the rest once those are sent." : "."));
         return missing.Count > room;
+    }
+
+    /// <summary>The profile folder a history file sits in ("profile1"), or null for one the mod can't place.</summary>
+    private static string? ProfileOf(string accountDir, string file)
+    {
+        string first = Path.GetRelativePath(accountDir, file).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+        return first.StartsWith("profile", StringComparison.OrdinalIgnoreCase) ? first : null;
     }
 
     /// <summary>Who is playing, and the start time of every run the site already has for them.</summary>
@@ -302,18 +332,42 @@ public sealed class Uploader
 
     private async Task<Outcome> SendAsync(List<string> batch)
     {
-        // As many runs as fit: halve the batch until it compresses under the limit.
-        byte[] body = Gzip(string.Join("\n", batch.Select(File.ReadAllText)));
-        while (body.Length > MaxUploadBytes && batch.Count > 1)
+        // The config is read again for every batch, so a change applies without a restart.
+        UploadSettings settings = _settings();
+        if (settings.Paused)
         {
-            batch.RemoveRange(batch.Count / 2, batch.Count - batch.Count / 2);
-            body = Gzip(string.Join("\n", batch.Select(File.ReadAllText)));
+            _log(settings.Error != null
+                ? "The config has an error; holding the queue until it is fixed."
+                : "Uploads are turned off in the config; holding the queue.");
+            return Outcome.Hold;
         }
 
         await RequestSlotAsync();
         Ticket ticket = await _getTicket();
         try
         {
+            // Each run as it will be sent: left out if its profile isn't on the list (its .run file stays in the
+            // game's history and isn't marked as sent), and with partners' Steam IDs stripped if asked.
+            List<(string Path, string Line)> runs = [];
+            foreach (string path in batch)
+            {
+                string? line = Prepare(path, settings, ticket.SteamId);
+                if (line == null) File.Delete(path);
+                else runs.Add((path, line));
+            }
+            batch.Clear();
+            batch.AddRange(runs.Select(r => r.Path));
+            if (batch.Count == 0) return Outcome.Sent;
+
+            // As many runs as fit: halve the batch until it compresses under the limit.
+            byte[] body = Gzip(string.Join('\n', runs.Select(r => r.Line)));
+            while (body.Length > MaxUploadBytes && batch.Count > 1)
+            {
+                batch.RemoveRange(batch.Count / 2, batch.Count - batch.Count / 2);
+                runs.RemoveRange(runs.Count / 2, runs.Count - runs.Count / 2);
+                body = Gzip(string.Join('\n', runs.Select(r => r.Line)));
+            }
+
             _requests.Add(DateTime.UtcNow);
             string ask = new JsonObject { ["steamId"] = ticket.SteamId, ["ticket"] = ticket.Hex }.ToJsonString();
             using HttpResponseMessage answer = await Http.PostAsync(_endpoint, new StringContent(ask, Encoding.UTF8, "application/json"));
@@ -355,6 +409,31 @@ public sealed class Uploader
         {
             ticket.Release();
         }
+    }
+
+    /// <summary>
+    /// One queued run as the line to send: null if the config leaves its profile out. For a co-op run it carries
+    /// whether the partners' IDs were left in; when they are stripped, every player but the uploader gets id 0.
+    /// </summary>
+    private static string? Prepare(string path, UploadSettings settings, string steamId)
+    {
+        JsonObject run = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        string? profile = run[ProfileKey]?.GetValue<string>();
+        run.Remove(ProfileKey);
+        if (!settings.Allows(profile)) return null;
+
+        if (run["players"] is JsonArray { Count: > 1 } players)
+        {
+            if (!settings.ShareMultiplayerIds)
+            {
+                foreach (JsonNode? player in players)
+                {
+                    if (player is JsonObject p && p["id"]?.ToString() != steamId) p["id"] = 0;
+                }
+            }
+            run["multiplayerIdsShared"] = settings.ShareMultiplayerIds;
+        }
+        return run.ToJsonString();
     }
 
     /// <summary>

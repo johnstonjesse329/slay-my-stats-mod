@@ -14,6 +14,8 @@
     <ItemGroup>
         <Compile Include="..\SlayMyStatsCode\Uploader.cs" Link="Uploader.cs"/>
         <Compile Include="..\SlayMyStatsCode\SteamTicket.cs" Link="SteamTicket.cs"/>
+        <Compile Include="..\SlayMyStatsCode\UploadSettings.cs" Link="UploadSettings.cs"/>
+        <Compile Include="..\SlayMyStatsCode\ModConfig.cs" Link="ModConfig.cs"/>
     </ItemGroup>
 
     <!-- Outside the game nothing is loaded yet, so the probe carries its own copies of the game's Steam libraries. -->
