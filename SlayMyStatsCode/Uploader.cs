@@ -63,7 +63,7 @@ public sealed class Uploader
     public Uploader(Uri endpoint, string queueDir, Func<Task<Ticket>> getTicket, Action<string> log, string modVersion,
         Func<UploadSettings>? settings = null)
     {
-        _settings = settings ?? (() => new UploadSettings(true, null, null));
+        _settings = settings ?? (() => new UploadSettings(true, null, true, null));
         _endpoint = endpoint;
         _queueDir = queueDir;
         _getTicket = getTicket;
@@ -351,7 +351,7 @@ public sealed class Uploader
             List<(string Path, string Line)> runs = [];
             foreach (string path in batch)
             {
-                string? line = Prepare(path, settings);
+                string? line = Prepare(path, settings, ticket.SteamId);
                 if (line == null) File.Delete(path);
                 else runs.Add((path, line));
             }
@@ -412,14 +412,28 @@ public sealed class Uploader
     }
 
     /// <summary>
-    /// One queued run as the line to send: null if the config leaves its profile out.
+    /// One queued run as the line to send: null if the config leaves its profile out. For a co-op run it carries
+    /// whether the partners' IDs were left in; when they are stripped, every player but the uploader gets id 0.
     /// </summary>
-    private static string? Prepare(string path, UploadSettings settings)
+    private static string? Prepare(string path, UploadSettings settings, string steamId)
     {
         JsonObject run = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
         string? profile = run[ProfileKey]?.GetValue<string>();
         run.Remove(ProfileKey);
-        return settings.Allows(profile) ? run.ToJsonString() : null;
+        if (!settings.Allows(profile)) return null;
+
+        if (run["players"] is JsonArray { Count: > 1 } players)
+        {
+            if (!settings.ShareMultiplayerIds)
+            {
+                foreach (JsonNode? player in players)
+                {
+                    if (player is JsonObject p && p["id"]?.ToString() != steamId) p["id"] = 0;
+                }
+            }
+            run["multiplayerIdsShared"] = settings.ShareMultiplayerIds;
+        }
+        return run.ToJsonString();
     }
 
     /// <summary>

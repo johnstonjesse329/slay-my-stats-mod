@@ -4,22 +4,23 @@ using System.Text.Json.Nodes;
 namespace SlayMyStats.SlayMyStatsCode;
 
 /// <summary>
-/// What the player lets the mod upload, from two keys in their own config.json (in
+/// What the player lets the mod upload, from three keys in their own config.json (in
 /// %APPDATA%\SlayTheSpire2\SlayMyStats, beside the carry_progress key):
 ///
 ///   uploadsEnabled       true; false stops every upload (anything skipped goes once it's turned back on)
 ///   profiles             "all", or a list such as ["profile1"]; only these profiles' runs upload
+///   shareMultiplayerIds  true; false strips co-op partners' Steam IDs before a run is sent
 ///
 /// The file is read again each time it is asked for, so an edit applies without restarting the game. A missing
 /// file is created with the defaults. A file that doesn't parse (or has a key of the wrong kind) means nothing
 /// uploads until it is fixed: the exact error goes to slay-my-stats-config-error.txt beside the file (deleted
 /// once it parses), to the log, and, where <see cref="Notice"/> is wired up, onto the main menu.
 /// </summary>
-public sealed record UploadSettings(bool Enabled, HashSet<string>? Profiles, string? Error)
+public sealed record UploadSettings(bool Enabled, HashSet<string>? Profiles, bool ShareMultiplayerIds, string? Error)
 {
     public const string ErrorFileName = "slay-my-stats-config-error.txt";
 
-    private const string Defaults = "{\n  \"uploadsEnabled\": true,\n  \"profiles\": \"all\"\n}\n";
+    private const string Defaults = "{\n  \"uploadsEnabled\": true,\n  \"profiles\": \"all\",\n  \"shareMultiplayerIds\": true\n}\n";
 
     // The newest read, for the main-menu notice: null when the config is fine.
     private static string? _error;
@@ -60,10 +61,11 @@ public sealed record UploadSettings(bool Enabled, HashSet<string>? Profiles, str
                 ?? throw new JsonException("the file isn't a JSON object");
 
             bool enabled = Flag(root, "uploadsEnabled");
+            bool share = Flag(root, "shareMultiplayerIds");
             HashSet<string>? profiles = Profile(root["profiles"]);
 
             Clear(errorFile);
-            return new UploadSettings(enabled, profiles, null);
+            return new UploadSettings(enabled, profiles, share, null);
         }
         catch (Exception e)
         {
@@ -83,7 +85,7 @@ public sealed record UploadSettings(bool Enabled, HashSet<string>? Profiles, str
             {
                 // the log has it
             }
-            return new UploadSettings(false, null, error);
+            return new UploadSettings(false, null, true, error);
         }
     }
 

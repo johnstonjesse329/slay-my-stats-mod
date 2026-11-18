@@ -31,7 +31,7 @@ public static class Program
         {
             UploadSettings settings = UploadSettings.Read(folder, Console.WriteLine);
             Console.WriteLine($"enabled={settings.Enabled} profiles={(settings.Profiles == null ? "all" : string.Join(",", settings.Profiles))} " +
-                              $"error={settings.Error ?? "none"} notice={UploadSettings.Notice ?? "none"}");
+                              $"shareIds={settings.ShareMultiplayerIds} error={settings.Error ?? "none"} notice={UploadSettings.Notice ?? "none"}");
             return 0;
         }
 
@@ -66,19 +66,10 @@ public static class Program
                 : await WithSteam(() => Upload(endpoint, rest, SteamTicket.GetAsync, settings, profile));
         }
 
-        if (args.Length >= 3 && args[0] == "backfill")
+        if (args is ["backfill", var url, var steamDir])
         {
-            List<string> rest = args.Skip(3).ToList();
-            string? configDir = Take(rest, "--config");
-            Func<UploadSettings>? settings = configDir == null ? null : () => UploadSettings.Read(configDir, Console.WriteLine);
-            string? claim = Take(rest, "--as");
-            Uri endpoint = new(args[1]);
-            Func<Task<Uploader.Ticket>> ticket = claim != null
-                ? () => Task.FromResult(new Uploader.Ticket(claim, new string('0', 64), () => { }))
-                : SteamTicket.GetAsync;
-            return claim != null
-                ? await Backfill(endpoint, args[2], settings, ticket)
-                : await WithSteam(() => Backfill(endpoint, args[2], settings, ticket));
+            Uri endpoint = new(url);
+            return await WithSteam(() => Backfill(endpoint, steamDir));
         }
 
         Console.Error.WriteLine("usage: SlayMyStatsProbe ticket\n" +
@@ -115,10 +106,10 @@ public static class Program
         return left == 0 ? 0 : 1;
     }
 
-    private static async Task<int> Backfill(Uri endpoint, string steamDir, Func<UploadSettings>? settings, Func<Task<Uploader.Ticket>> getTicket)
+    private static async Task<int> Backfill(Uri endpoint, string steamDir)
     {
         string queueDir = Path.Combine(Path.GetTempPath(), "SlayMyStatsProbe", $"backfill-{endpoint.Host.Split('.')[0]}");
-        Uploader uploader = new(endpoint, queueDir, getTicket, Console.WriteLine, "probe", settings);
+        Uploader uploader = new(endpoint, queueDir, SteamTicket.GetAsync, Console.WriteLine, "probe");
         uploader.Backfill(steamDir);
         await uploader.DrainAsync();
 
