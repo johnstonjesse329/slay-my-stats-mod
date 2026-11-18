@@ -413,7 +413,8 @@ public sealed class Uploader
 
     /// <summary>
     /// One queued run as the line to send: null if the config leaves its profile out. For a co-op run it carries
-    /// whether the partners' IDs were left in; when they are stripped, every player but the uploader gets id 0.
+    /// whether the partners' IDs were left in; when they are stripped, every partner ID anywhere in the run (the
+    /// players list, and per-floor stats such as map_point_history's player_id) becomes 0. The uploader's stays.
     /// </summary>
     private static string? Prepare(string path, UploadSettings settings, string steamId)
     {
@@ -426,14 +427,37 @@ public sealed class Uploader
         {
             if (!settings.ShareMultiplayerIds)
             {
-                foreach (JsonNode? player in players)
-                {
-                    if (player is JsonObject p && p["id"]?.ToString() != steamId) p["id"] = 0;
-                }
+                HashSet<string> partners = players.OfType<JsonObject>()
+                    .Select(p => p["id"]?.ToString())
+                    .Where(id => !string.IsNullOrEmpty(id) && id != steamId && id != "0")
+                    .ToHashSet()!;
+                BlankIds(run, partners);
             }
             run["multiplayerIdsShared"] = settings.ShareMultiplayerIds;
         }
         return run.ToJsonString();
+    }
+
+    /// <summary>Replace every value in the tree equal to one of <paramref name="ids"/> (number or text) with 0.</summary>
+    private static void BlankIds(JsonNode? node, HashSet<string> ids)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (string key in obj.Select(kv => kv.Key).ToList())
+                {
+                    if (obj[key] is JsonValue v && ids.Contains(v.ToString())) obj[key] = 0;
+                    else BlankIds(obj[key], ids);
+                }
+                break;
+            case JsonArray list:
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (list[i] is JsonValue v && ids.Contains(v.ToString())) list[i] = 0;
+                    else BlankIds(list[i], ids);
+                }
+                break;
+        }
     }
 
     /// <summary>
