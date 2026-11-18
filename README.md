@@ -14,7 +14,7 @@ saves it, with a log of each fight. Runs you played unmodded before installing i
 
 ## Choosing what uploads
 
-By default the mod uploads every run from every profile, exactly as the game saved it. A co-op run file already contains your partners' Steam IDs, so they upload too, and the site uses them to link a co-op run to each player's copy of it. Three settings change that.
+By default the mod uploads every run from every profile, exactly as the game saved it. A co-op run file already contains your partners' Steam IDs, so they upload too, and the site uses them to link a co-op run to each player's copy of it. A settings file lets you pause uploads, choose which profiles upload, and blank your partners' IDs. The steps are below.
 
 ### Changing a setting
 
