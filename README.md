@@ -60,7 +60,7 @@ If the file can't be read, **nothing uploads** until it is fixed. The main menu 
 
 With any mod loaded, the game keeps its saves in a separate "modded" folder, and it starts empty. So that you don't have to replay ascensions or unlock everything again, Slay My Stats lifts each modded profile to your normal profile in the same slot. Each character's highest ascension, any wins and losses the modded profile doesn't have yet, and your unlocks all carry over. It only ever raises things, and it never changes your normal saves.
 
-To turn this off, create `%APPDATA%\SlayTheSpire2\SlayMyStats\config.json` containing `{"carry_progress": false}`. Unsubscribe and the game goes back to your normal saves.
+To turn this off, add `"carry_progress": false` to `config.json` (see [Changing a setting](#changing-a-setting)). Unsubscribe and the game goes back to your normal saves.
 
 ### Backups
 
@@ -72,7 +72,7 @@ To restore one:
 2. Open `%APPDATA%\SlayTheSpire2\steam\<your Steam ID>\modded\profileN\saves\`. Rename `progress.save` to `progress.save.old`. That keeps what you have now.
 3. Copy the backup you want from the backups folder into this folder. Leave the original backup where it is.
 4. Rename the copy to `progress.save`.
-5. If you don't want the mod to raise the profile again on the next launch, create `%APPDATA%\SlayTheSpire2\SlayMyStats\config.json` containing `{"carry_progress": false}` before starting the game.
+5. If you don't want the mod to raise the profile again on the next launch, add `"carry_progress": false` to `config.json` before starting the game.
 
 Steam Cloud may keep its own copy of your saves. The backups folder is not synced.
 
