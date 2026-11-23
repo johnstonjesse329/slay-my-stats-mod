@@ -20,7 +20,6 @@ internal static class RunCheckpoint
     internal static string Root => Path.Combine(OS.GetUserDataDir(), MainFile.ModId, "map-checkpoints");
     private static string? _path;
     private static string? _lastFight;
-    private static bool _firstFight;
     private static Task _writes = Task.CompletedTask;
     private static int _writeFailed;
     /// <summary>The small file as last handed to a write, so a save that changes nothing writes nothing.</summary>
@@ -39,11 +38,11 @@ internal static class RunCheckpoint
         _path = path;
         _lastFight = null;
         _lastMeta = null;
-        _firstFight = true;
         if (!File.Exists(path)) return;
 
         try
         {
+            _writes.Wait();     // a save from before the quit may still be on its way to the files
             CheckpointFile.Saved saved = CheckpointFile.Read(path);
             MapLog.Restore(saved.Maps);
             EventLog.Restore(saved.Telemetry, saved.LogInOwnFile);
@@ -62,8 +61,8 @@ internal static class RunCheckpoint
             EnsureLoaded();
             var coord = state.CurrentMapCoord;
             string key = $"{state.CurrentActIndex}:{state.TotalFloor}:{coord?.row}:{coord?.col}:{state.CurrentRoomCount}:{encounter}";
-            if (_firstFight && _lastFight == key) EventLog.DropLastFight();
-            _firstFight = false;
+            // The same fight starting again is a retry after a quit: the attempt that never ended goes.
+            if (_lastFight == key) EventLog.DropLastFight();
             _lastFight = key;
             if (state is RunState live && coord != null) MapLog.Visit(live);
         }
@@ -107,6 +106,18 @@ internal static class RunCheckpoint
         {
             MainFile.Logger.Error($"Could not write run checkpoint: {e}");
         }
+    }
+
+    /// <summary>Back at the main menu, the run in memory may hold play the game threw away on the quit (a fight
+    /// cut short, a room left half done). Forgetting it makes the next continue load the run as it was last
+    /// saved, as the game does.</summary>
+    internal static void Forget()
+    {
+        if (_path == null) return;
+        MainFile.Logger.Info("Back at the menu; the run checkpoint loads again from disk on continue.");
+        _path = null;
+        _lastFight = null;
+        _lastMeta = null;
     }
 
     /// <summary>Stops saving to the run's checkpoint. Returns its path (when it is that run's) and the writes

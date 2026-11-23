@@ -7,7 +7,8 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// <summary>
 /// When the upload config can't be read (see <see cref="UploadSettings"/>), says so on the main menu: a single
 /// line of red text along the bottom, added to the menu as it opens. It adds nothing when the config is fine, and
-/// the menu is not otherwise touched.
+/// the menu is not otherwise touched. The menu opening also tells <see cref="RunCheckpoint"/> to drop the run it
+/// holds in memory, so a run continued from the menu loads from its last save.
 /// </summary>
 [HarmonyPatch(typeof(NMainMenu), "_Ready")]
 public static class ConfigNoticePatch
@@ -15,6 +16,7 @@ public static class ConfigNoticePatch
     [HarmonyPostfix]
     public static void Postfix(NMainMenu __instance)
     {
+        RunCheckpoint.Forget();
         try
         {
             if (UploadSettings.Notice is not { } notice) return;
