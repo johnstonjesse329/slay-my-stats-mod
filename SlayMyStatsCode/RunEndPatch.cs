@@ -26,36 +26,37 @@ public static class RunEndPatch
             // Only turning the run into text happens here, on the game's thread, while the run can't change.
             // Writing it to the queue and sending it are left to a background task.
             string json = JsonSerializationUtility.ToJson(history);
+            RunCheckpoint.EnsureLoaded(history.StartTime);
             JsonArray mods = LoadedMods();
             JsonObject? telemetry = EventLog.Take();
             JsonArray? maps = MapLog.Take();
+            RunCheckpoint.Save(mods);
+            string? checkpoint = RunCheckpoint.Detach(history.StartTime);
             MainFile.Logger.Info($"Run ended: {history.StartTime}.run win={history.Win} abandoned={history.WasAbandoned}.");
 
             string steamDir = Path.Combine(Godot.OS.GetUserDataDir(), "steam");
             long start = history.StartTime;
-            foreach (Uploader uploader in MainFile.Uploaders)
+            _ = Task.Run(() =>
             {
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
+                    // The game has just written the history file; its folder says which profile played it.
+                    string? profile = ProfileOf(steamDir, start);
+                    if (!MainFile.Uploaders.Any(u => u.Wants(profile)))
+                        MainFile.Logger.Info($"Run {start} (profile {profile ?? "unknown"}) isn't on the config's profile list; not uploading it.");
+                    foreach (Uploader uploader in MainFile.Uploaders.Where(u => u.Wants(profile)))
                     {
-                        // The game has just written the history file; its folder says which profile played it.
-                        string? profile = ProfileOf(steamDir, start);
-                        if (!uploader.Wants(profile))
-                        {
-                            MainFile.Logger.Info($"Run {start} (profile {profile ?? "unknown"}) isn't on the config's profile list; not uploading it.");
-                            return;
-                        }
                         MainFile.Logger.Info($"Run {start}: queuing it for upload.");
                         uploader.Enqueue(json, mods, telemetry, maps, profile);
-                        await uploader.DrainAsync();
+                        uploader.Kick();
                     }
-                    catch (Exception e)
-                    {
-                        MainFile.Logger.Error($"Couldn't queue the run: {e}");
-                    }
-                });
-            }
+                    if (checkpoint != null) File.Delete(checkpoint);
+                }
+                catch (Exception e)
+                {
+                    MainFile.Logger.Error($"Couldn't queue the run: {e}");
+                }
+            });
             MapLog.Reset();
             EventLog.Reset();       // the next run starts with an empty log
             EventHooks.Reset();     // and a hook failure is retried on the next one

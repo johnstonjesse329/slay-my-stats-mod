@@ -133,7 +133,13 @@ def main() -> int:
             continue
         kinds = {n: t for t, n in matched}
         for t, n in params:
-            got, want = TYPE_MAP.get(t, t), kinds.get(n, "")
+            want = kinds.get(n, "")
+            base = t.removesuffix("?")
+            # `Creature?` is only a compile-time note on a reference type: Harmony binds it
+            # the same as `Creature`. `int?` is a different type (Nullable`1) and must match.
+            if t.endswith("?") and base not in TYPE_MAP and want != "Nullable`1":
+                t = base
+            got = "Nullable`1" if t.endswith("?") else TYPE_MAP.get(t, t)
             if got != want and not want.startswith("IReadOnlyList") and not want.startswith("IEnumerable"):
                 print(f"FAIL {file}:{line} {target}: {n} is {want}, patch says {got}")
                 bad += 1
