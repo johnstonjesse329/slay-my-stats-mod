@@ -30,9 +30,8 @@ public sealed class Uploader
     // rather than being stopped: it gives up on a batch after a few tries, and asks at most this often.
     private const int MaxRequestsPerHour = 30;
     private const int MaxQueuedRuns = 500;
+    // The size cap comes from the server with each upload URL; a batch is halved until it fits.
     private const int MaxRunsPerUpload = 500;
-    // Under the site's 1 MiB. A batch is halved until it fits: ~250 old runs, or a handful with fight logs.
-    private const int MaxUploadBytes = 1_000_000;
     private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5)];
 
     private enum Outcome { Sent, Retry, Stop, Hold }
@@ -56,7 +55,6 @@ public sealed class Uploader
     private readonly string _modVersion;
     private readonly Func<UploadSettings> _settings;
     private readonly List<DateTime> _requests = [];
-    private int _batchSize = MaxRunsPerUpload;
     private int _running;
     private int _kickRequested;
     private bool _stopped;
@@ -361,7 +359,7 @@ public sealed class Uploader
             queued.RemoveAt(0);
         }
 
-        return queued.Take(_batchSize).ToList();
+        return queued.Take(MaxRunsPerUpload).ToList();
     }
 
     /// <summary>
@@ -408,15 +406,6 @@ public sealed class Uploader
             batch.AddRange(runs.Select(r => r.Path));
             if (batch.Count == 0) return Outcome.Sent;
 
-            // As many runs as fit: halve the batch until it compresses under the limit.
-            byte[] body = Gzip(string.Join('\n', runs.Select(r => r.Line)));
-            while (body.Length > MaxUploadBytes && batch.Count > 1)
-            {
-                batch.RemoveRange(batch.Count / 2, batch.Count - batch.Count / 2);
-                runs.RemoveRange(runs.Count / 2, runs.Count - runs.Count / 2);
-                body = Gzip(string.Join('\n', runs.Select(r => r.Line)));
-            }
-
             _requests.Add(DateTime.UtcNow);
             string ask = new JsonObject { ["steamId"] = ticket.SteamId, ["ticket"] = ticket.Hex }.ToJsonString();
             using HttpResponseMessage answer = await Http.PostAsync(_endpoint, new StringContent(ask, Encoding.UTF8, "application/json"));
@@ -427,18 +416,21 @@ public sealed class Uploader
                 return IsWorthRetrying(answer.StatusCode) ? Outcome.Retry : Outcome.Stop;
             }
 
+            // As many runs as fit under the server's cap: halve the batch until it compresses under it.
             JsonObject auth = JsonNode.Parse(text)!.AsObject();
-            if (body.Length > auth["maxBytes"]!.GetValue<long>())
+            long maxBytes = auth["maxBytes"]!.GetValue<long>();
+            byte[] body = Gzip(string.Join('\n', runs.Select(r => r.Line)));
+            while (body.Length > maxBytes && batch.Count > 1)
             {
-                if (batch.Count == 1)
-                {
-                    _log($"{Path.GetFileName(batch[0])} is {body.Length} bytes compressed, over the limit. Dropping it.");
-                    File.Delete(batch[0]);
-                    return Outcome.Sent;
-                }
-
-                _batchSize = Math.Max(1, batch.Count / 2);
-                return Outcome.Retry;
+                batch.RemoveRange(batch.Count / 2, batch.Count - batch.Count / 2);
+                runs.RemoveRange(runs.Count / 2, runs.Count - runs.Count / 2);
+                body = Gzip(string.Join('\n', runs.Select(r => r.Line)));
+            }
+            if (body.Length > maxBytes)
+            {
+                _log($"{Path.GetFileName(batch[0])} is {body.Length} bytes compressed, over the limit. Dropping it.");
+                File.Delete(batch[0]);
+                return Outcome.Sent;
             }
 
             Uri uploadUrl = new(_endpoint, auth["url"]!.GetValue<string>());
