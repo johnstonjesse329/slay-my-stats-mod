@@ -35,6 +35,7 @@ public static class EventLog
     }
 
     private static readonly List<Entry> Entries = [];
+    internal static readonly AsyncLocal<int?> CurrentAction = new();
     private static long _seq;
     private static int _fight = -1;
     private static int _turn;
@@ -52,7 +53,41 @@ public static class EventLog
         if (turn > 0) _turn = turn;
     }
 
-    public static void NewFight() => _fight++;
+    public static void NewFight()
+    {
+        _fight++;
+        _turn = 0;
+    }
+
+    internal static void DropLastFight()
+    {
+        if (_fight < 0) return;
+        int start = Entries.FindLastIndex(e => e.Fight == _fight && e.Kind == "fight0");
+        if (start < 0) return;
+        Entries.RemoveRange(start, Entries.Count - start);
+        _fight--;
+        _truncated = false;
+    }
+
+    internal static void Restore(JsonObject? telemetry)
+    {
+        if (telemetry?["log"] is not JsonArray log) return;
+        foreach (JsonObject e in log.OfType<JsonObject>().Take(MaxEvents))
+        {
+            Entries.Add(new Entry
+            {
+                Seq = (long)e["q"]!,
+                Fight = (int)e["f"]!,
+                Turn = (int)e["t"]!,
+                Kind = (string)e["k"]!,
+                Args = (JsonObject)e["a"]!.DeepClone()
+            });
+        }
+        if (Entries.Count == 0) return;
+        _seq = Entries[^1].Seq;
+        _fight = Entries.Any(e => e.Kind == "fight0") ? Entries[^1].Fight : -1;
+        _truncated = (bool?)telemetry["truncated"] ?? false;
+    }
 
     public static void Add(string kind, JsonObject? args = null)
     {
@@ -61,6 +96,11 @@ public static class EventLog
         {
             _truncated = true;
             return;
+        }
+        if (CurrentAction.Value is int action)
+        {
+            args ??= [];
+            args["action"] = action;
         }
         Entries.Add(new Entry
         {

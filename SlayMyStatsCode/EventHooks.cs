@@ -25,15 +25,20 @@ namespace SlayMyStats.SlayMyStatsCode;
 public static class EventHooks
 {
     private static bool _broken;
+    private static readonly Dictionary<Creature, int> DamageSlots = [];
 
-    public static void Reset() => _broken = false;
+    public static void Reset()
+    {
+        _broken = false;
+        DamageSlots.Clear();
+    }
 
     /// <summary>Where the run so far is written after every fight, so a single fight
     /// is enough to check the recording.</summary>
     public static string DebugPath() =>
         Path.Combine(OS.GetUserDataDir(), "SlayMyStats", "telemetry", "live.ndjson");
 
-    private static void Safe(Action body)
+    internal static void Safe(Action body)
     {
         if (_broken) return;
         try
@@ -51,6 +56,9 @@ public static class EventHooks
     /// <summary>A creature as the log names it: the player, or the enemy's slot.</summary>
     internal static string Name(Creature? c) =>
         c == null ? "" : c.IsPlayer ? "P" : (string.IsNullOrEmpty(c.SlotName) ? c.Name ?? "" : c.SlotName);
+
+    internal static JsonNode? Slot(Creature? creature) =>
+        creature != null && DamageSlots.TryGetValue(creature, out int slot) ? JsonValue.Create(slot) : null;
 
     private static int Hp(ICombatState state)
     {
@@ -87,12 +95,24 @@ public static class EventHooks
 
     public static void FightStart(IRunState runState, ICombatState state) => Safe(() =>
     {
+        RunCheckpoint.FightStarted(runState, state.Encounter?.Id?.ToString() ?? "");
         EventLog.NewFight();
+        // Use the run roster order, which the save also uses for players and player_stats.
+        // The event needs a seat number only, so it carries no online account identifier.
+        DamageSlots.Clear();
+        int slot = 0;
+        foreach (Player player in runState.Players)
+        {
+            if (player.Creature != null) DamageSlots[player.Creature] = slot;
+            slot++;
+        }
         EventLog.Add("fight0", new JsonObject
         {
             ["enc"] = state.Encounter?.Id?.ToString() ?? "",
             ["hp"] = Hp(state),
             ["round"] = state.RoundNumber,
+            ["damageSlots"] = slot == DamageSlots.Count ? slot : 0,
+            ["support"] = 1,
             ["deck"] = state.Players.Sum(p => p.PlayerCombatState?.AllCards?.Count() ?? 0)
         });
         Snapshot(state, "fight0");
@@ -129,6 +149,7 @@ public static class EventHooks
         EventLog.Add("turn0", new JsonObject
         {
             ["turn"] = player.PlayerCombatState?.TurnNumber ?? 0,
+            ["targetSlot"] = Slot(player.Creature),
             ["energy"] = player.PlayerCombatState?.Energy ?? 0,
             ["stars"] = player.PlayerCombatState?.Stars ?? 0,
             ["round"] = state.RoundNumber
@@ -141,7 +162,8 @@ public static class EventHooks
         EventLog.Add("extra", new JsonObject
         {
             ["turn"] = player.PlayerCombatState?.TurnNumber ?? 0,
-            ["energy"] = player.PlayerCombatState?.Energy ?? 0
+            ["energy"] = player.PlayerCombatState?.Energy ?? 0,
+            ["targetSlot"] = Slot(player.Creature)
         }));
 
     /// <summary>Before the hand exists: the earliest point at which a turn can be said
@@ -163,12 +185,17 @@ public static class EventHooks
         {
             ["turn"] = turn,
             ["energy"] = player.PlayerCombatState?.Energy ?? 0,
+            ["targetSlot"] = Slot(player.Creature),
             ["max"] = player.PlayerCombatState?.MaxEnergy ?? 0
         });
     });
 
     public static void EnergySpent(CardModel? card, int amount) => Safe(() =>
-        EventLog.Add("eps", new JsonObject { ["n"] = amount, ["card"] = CardId(card) }));
+        EventLog.Add("eps", new JsonObject
+        {
+            ["n"] = amount, ["card"] = CardId(card), ["instance"] = SupportTrace.ObjectId(card),
+            ["sourceSlot"] = Slot(card?.Owner.Creature), ["energy"] = card?.Owner.PlayerCombatState?.Energy
+        }));
 
     public static void SideTurnEnd(ICombatState state, CombatSide side) => Safe(() =>
     {
@@ -185,14 +212,28 @@ public static class EventHooks
     // ---- cards ----------------------------------------------------------
 
     public static void CardDrawn(CardModel? card, bool fromHandDraw) => Safe(() =>
-        EventLog.Add("draw1", new JsonObject { ["card"] = CardId(card), ["hand"] = fromHandDraw }));
+        EventLog.Add("draw1", new JsonObject
+        {
+            ["card"] = CardId(card), ["hand"] = fromHandDraw,
+            ["targetSlot"] = Slot(card?.Owner.Creature), ["instance"] = SupportTrace.ObjectId(card)
+        }));
 
     public static void CardPlayed(CardPlay? play) => Safe(() =>
         EventLog.Add("play1", new JsonObject
         {
             ["card"] = CardId(play?.Card),
             ["up"] = play?.Card?.CurrentUpgradeLevel ?? 0,
-            ["auto"] = play?.Card?.IsInCombat == true && play?.Card?.Pile?.Type.ToString() == "Play"
+            ["auto"] = play?.IsAutoPlay ?? false,
+            ["sourceSlot"] = Slot(play?.Player.Creature),
+            ["targetSlot"] = Slot(play?.Target),
+            ["targetId"] = JsonValue.Create(play?.Target?.CombatId),
+            ["instance"] = SupportTrace.ObjectId(play?.Card),
+            ["playerTurn"] = play?.Player.PlayerCombatState?.TurnNumber,
+            ["energySpent"] = play?.Resources.EnergySpent,
+            ["energyValue"] = play?.Resources.EnergyValue,
+            ["starsSpent"] = play?.Resources.StarsSpent,
+            ["playIndex"] = play?.PlayIndex,
+            ["playCount"] = play?.PlayCount
         }));
 
     public static void CardDiscarded(CardModel? card) => Safe(() =>
@@ -201,8 +242,12 @@ public static class EventHooks
     public static void CardExhausted(CardModel? card, bool ethereal) => Safe(() =>
         EventLog.Add("exh", new JsonObject { ["card"] = CardId(card), ["eth"] = ethereal }));
 
-    public static void CardGenerated(CardModel? card) => Safe(() =>
-        EventLog.Add("gen", new JsonObject { ["card"] = CardId(card) }));
+    public static void CardGenerated(CardModel? card, Player? creator) => Safe(() =>
+        EventLog.Add("gen", new JsonObject
+        {
+            ["card"] = CardId(card), ["instance"] = SupportTrace.ObjectId(card),
+            ["sourceSlot"] = Slot(creator?.Creature), ["targetSlot"] = Slot(card?.Owner.Creature)
+        }));
 
     // ---- damage, HP, block ----------------------------------------------
 
@@ -214,14 +259,24 @@ public static class EventHooks
         {
             ["c"] = Name(creature),
             ["d"] = (int)delta,
+            ["targetSlot"] = Slot(creature),
+            ["targetId"] = JsonValue.Create(creature?.CombatId),
             ["hp"] = creature?.CurrentHp ?? 0
         }));
 
-    public static void DamageReceived(Creature? target, DamageResult? result, Creature? dealer) => Safe(() =>
+    public static void DamageReceived(Creature? target, DamageResult? result, Creature? dealer, CardModel? cardSource) => Safe(() =>
         EventLog.Add("recv", new JsonObject
         {
             ["t"] = Name(target),
             ["by"] = Name(dealer),
+            ["sourceSlot"] = Slot(dealer),
+            ["targetSlot"] = Slot(result?.Receiver),
+            ["originalTargetSlot"] = Slot(result?.OriginalTarget),
+            ["targetId"] = JsonValue.Create(result?.Receiver.CombatId),
+            ["originalTargetId"] = JsonValue.Create(result?.OriginalTarget.CombatId),
+            ["intendedHpLoss"] = result?.IntendedHpLoss,
+            ["damageId"] = SupportTrace.ObjectId(result),
+            ["card"] = CardId(cardSource),
             ["total"] = result?.TotalDamage ?? 0,
             ["blk"] = result?.BlockedDamage ?? 0,
             ["unb"] = result?.UnblockedDamage ?? 0,
@@ -231,33 +286,51 @@ public static class EventHooks
             ["kill"] = result?.WasTargetKilled ?? false
         }));
 
-    public static void DamageGiven(Creature? dealer, DamageResult? result, Creature? target) => Safe(() =>
+    public static void DamageGiven(Creature? dealer, DamageResult? result, Creature? target, CardModel? cardSource) => Safe(() =>
         EventLog.Add("hit", new JsonObject
         {
             ["by"] = Name(dealer),
             ["t"] = Name(target),
+            ["sourceSlot"] = Slot(dealer),
+            ["petOwnerSlot"] = Slot(dealer?.PetOwner?.Creature),
+            ["targetSlot"] = Slot(result?.Receiver),
+            ["originalTargetSlot"] = Slot(result?.OriginalTarget),
+            ["targetId"] = JsonValue.Create(result?.Receiver.CombatId),
+            ["originalTargetId"] = JsonValue.Create(result?.OriginalTarget.CombatId),
+            ["intendedHpLoss"] = result?.IntendedHpLoss,
+            ["damageId"] = SupportTrace.ObjectId(result),
+            ["card"] = CardId(cardSource),
+            ["enemy"] = (result?.Receiver ?? target)?.Side == CombatSide.Enemy,
             ["total"] = result?.TotalDamage ?? 0,
             ["blk"] = result?.BlockedDamage ?? 0,
             ["unb"] = result?.UnblockedDamage ?? 0,
             ["ovk"] = result?.OverkillDamage ?? 0
         }));
 
-    public static void BlockGained(Creature? creature, decimal amount) => Safe(() =>
-        EventLog.Add("blk", new JsonObject { ["c"] = Name(creature), ["n"] = (int)amount }));
+    public static void BlockGained(Creature? creature, decimal amount, CardModel? cardSource) => Safe(() =>
+        EventLog.Add("blk", new JsonObject
+        {
+            ["c"] = Name(creature), ["n"] = (int)amount, ["targetSlot"] = Slot(creature),
+            ["sourceSlot"] = Slot(cardSource?.Owner.Creature), ["card"] = CardId(cardSource)
+        }));
 
     public static void BlockBroken(Creature? target, Creature? breaker) => Safe(() =>
         EventLog.Add("blkb", new JsonObject { ["c"] = Name(target), ["by"] = Name(breaker) }));
 
     // ---- powers, orbs, stars, death -------------------------------------
 
-    public static void PowerChanged(PowerModel? power, decimal amount, Creature? applier) => Safe(() =>
+    public static void PowerChanged(PowerModel? power, decimal amount, Creature? applier, CardModel? cardSource) => Safe(() =>
         EventLog.Add("pow", new JsonObject
         {
             ["c"] = Name(power?.Owner),
             ["p"] = power?.Id.ToString() ?? "",
             ["n"] = power?.Amount ?? 0,
             ["d"] = (int)amount,
-            ["by"] = Name(applier)
+            ["by"] = Name(applier),
+            ["sourceSlot"] = Slot(applier),
+            ["targetSlot"] = Slot(power?.Owner),
+            ["targetId"] = JsonValue.Create(power?.Owner.CombatId),
+            ["card"] = CardId(cardSource)
         }));
 
     public static void OrbChanneled(OrbModel? orb) => Safe(() =>
@@ -283,7 +356,10 @@ public static class EventHooks
         EventLog.Add("potion", new JsonObject
         {
             ["p"] = potion?.Id.ToString() ?? "",
-            ["t"] = Name(target)
+            ["t"] = Name(target),
+            ["sourceSlot"] = Slot(potion?.Owner.Creature),
+            ["targetSlot"] = Slot(target),
+            ["targetId"] = JsonValue.Create(target?.CombatId)
         }));
 
     public static void PotionProcured(PotionModel? potion) => Safe(() =>
@@ -380,6 +456,8 @@ public static class EventHooks
             {
                 ["c"] = Name(c),
                 ["you"] = c.IsPlayer,
+                ["slot"] = Slot(c),
+                ["combatId"] = JsonValue.Create(c.CombatId),
                 ["hp"] = c.CurrentHp,
                 ["max"] = c.MaxHp,
                 ["blk"] = c.Block,
@@ -398,6 +476,7 @@ public static class EventHooks
         {
             players.Add(new JsonObject
             {
+                ["slot"] = Slot(p.Creature),
                 ["en"] = p.PlayerCombatState?.Energy ?? 0,
                 ["st"] = p.PlayerCombatState?.Stars ?? 0,
                 ["gold"] = p.Gold,
@@ -491,6 +570,7 @@ public static class EventCombatEnd
     public static void Postfix(ICombatState combatState)
     {
         EventHooks.FightEnd(combatState);
+        RunCheckpoint.Save();
         EventLog.WriteDebug(EventHooks.DebugPath());
     }
 }
@@ -619,9 +699,9 @@ public static class EventCardExhausted
 public static class EventCardGenerated
 {
     [HarmonyPostfix]
-    public static void Postfix(CardModel card)
+    public static void Postfix(CardModel card, Player? creator)
     {
-        EventHooks.CardGenerated(card);
+        EventHooks.CardGenerated(card, creator);
     }
 }
 
@@ -639,9 +719,9 @@ public static class EventHpChanged
 public static class EventDamageReceived
 {
     [HarmonyPostfix]
-    public static void Postfix(Creature target, DamageResult result, Creature dealer)
+    public static void Postfix(Creature target, DamageResult result, Creature? dealer, CardModel? cardSource)
     {
-        EventHooks.DamageReceived(target, result, dealer);
+        EventHooks.DamageReceived(target, result, dealer, cardSource);
     }
 }
 
@@ -649,9 +729,9 @@ public static class EventDamageReceived
 public static class EventDamageGiven
 {
     [HarmonyPostfix]
-    public static void Postfix(Creature dealer, DamageResult results, Creature target)
+    public static void Postfix(Creature? dealer, DamageResult results, Creature target, CardModel? cardSource)
     {
-        EventHooks.DamageGiven(dealer, results, target);
+        EventHooks.DamageGiven(dealer, results, target, cardSource);
     }
 }
 
@@ -659,9 +739,9 @@ public static class EventDamageGiven
 public static class EventBlockGained
 {
     [HarmonyPostfix]
-    public static void Postfix(Creature creature, decimal amount)
+    public static void Postfix(Creature creature, decimal amount, CardModel? cardSource)
     {
-        EventHooks.BlockGained(creature, amount);
+        EventHooks.BlockGained(creature, amount, cardSource);
     }
 }
 
@@ -679,9 +759,9 @@ public static class EventBlockBroken
 public static class EventPowerChanged
 {
     [HarmonyPostfix]
-    public static void Postfix(PowerModel power, decimal amount, Creature applier)
+    public static void Postfix(PowerModel power, decimal amount, Creature? applier, CardModel? cardSource)
     {
-        EventHooks.PowerChanged(power, amount, applier);
+        EventHooks.PowerChanged(power, amount, applier, cardSource);
     }
 }
 

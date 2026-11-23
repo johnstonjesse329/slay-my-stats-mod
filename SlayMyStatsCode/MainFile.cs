@@ -54,7 +54,12 @@ public partial class MainFile : Node
                 string queueDir = Path.Combine(userDir, "queue", name);
                 Uploaders.Add(new Uploader(new Uri(url), queueDir, SteamTicket.GetAsync,
                     message => Logger.Info($"[{name}] {message}"), Version(modDir),
-                    () => UploadSettings.Read(userDir, message => Logger.Info(message))));
+                    () => UploadSettings.Read(userDir, message => Logger.Info(message)),
+                    RunCheckpoint.Root, (path, profile, start) =>
+                    {
+                        if (Uploaders.Where(u => u.Wants(profile)).All(u => u.HasQueuedOrSent(start)))
+                            File.Delete(path);
+                    }));
                 sites.Add(name);
             }
 

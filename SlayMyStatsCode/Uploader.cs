@@ -49,6 +49,8 @@ public sealed class Uploader
 
     private readonly Uri _endpoint;
     private readonly string _queueDir;
+    private readonly string? _checkpointRoot;
+    private readonly Action<string, string, long>? _checkpointQueued;
     private readonly Func<Task<Ticket>> _getTicket;
     private readonly Action<string> _log;
     private readonly string _modVersion;
@@ -61,11 +63,14 @@ public sealed class Uploader
     private string? _backfillFrom;
 
     public Uploader(Uri endpoint, string queueDir, Func<Task<Ticket>> getTicket, Action<string> log, string modVersion,
-        Func<UploadSettings>? settings = null)
+        Func<UploadSettings>? settings = null, string? checkpointRoot = null,
+        Action<string, string, long>? checkpointQueued = null)
     {
         _settings = settings ?? (() => new UploadSettings(true, null, true, null));
         _endpoint = endpoint;
         _queueDir = queueDir;
+        _checkpointRoot = checkpointRoot;
+        _checkpointQueued = checkpointQueued;
         _getTicket = getTicket;
         _log = log;
         _modVersion = modVersion;
@@ -236,6 +241,7 @@ public sealed class Uploader
         skip.UnionWith(queued.Select(f => Path.GetFileNameWithoutExtension(f)));
 
         string accountDir = Path.Combine(steamDir, steamId);
+        RecoverCheckpoints(accountDir, have, skip);
         List<(long Start, string Path)> missing = (Directory.Exists(accountDir)
                 ? Directory.GetFiles(accountDir, "*.run", SearchOption.AllDirectories)
                 : [])
@@ -269,6 +275,50 @@ public sealed class Uploader
             : $"The site is missing {missing.Count} run(s) from the game's history; queued {added}" +
               (missing.Count > room ? ", the rest once those are sent." : "."));
         return missing.Count > room;
+    }
+
+    private void RecoverCheckpoints(string accountDir, HashSet<long> have, HashSet<string> skip)
+    {
+        if (_checkpointRoot == null || !Directory.Exists(accountDir)) return;
+        string root = Path.Combine(_checkpointRoot, Path.GetFileName(accountDir));
+        if (!Directory.Exists(root)) return;
+        foreach (string path in Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories))
+        {
+            if (!long.TryParse(Path.GetFileNameWithoutExtension(path), out long start)) continue;
+            string profile = Path.GetFileName(Path.GetDirectoryName(path))!;
+            if (!Wants(profile)) continue;
+            try
+            {
+                if (have.Contains(start) || skip.Contains(start.ToString()))
+                {
+                    _checkpointQueued?.Invoke(path, profile, start);
+                    continue;
+                }
+                if (Directory.GetFiles(_queueDir, "*.json").Length >= MaxQueuedRuns) break;
+                var checkpoint = JsonNode.Parse(File.ReadAllText(path));
+                if (checkpoint?["mods"] is not JsonArray mods) continue;
+                string? history = Directory.EnumerateFiles(accountDir, $"{start}.run", SearchOption.AllDirectories)
+                    .FirstOrDefault(file => ProfileOf(accountDir, file) == profile
+                        && Path.GetFileName(Path.GetDirectoryName(file)) == "history");
+                if (history == null) continue;
+                Enqueue(File.ReadAllText(history), mods, checkpoint["telemetry"] as JsonObject,
+                    checkpoint["maps"] as JsonArray, profile);
+                skip.Add(start.ToString());
+                _checkpointQueued?.Invoke(path, profile, start);
+            }
+            catch (Exception e)
+            {
+                _log($"Could not recover checkpoint for run {start}: {e.Message}");
+            }
+        }
+    }
+
+    internal bool HasQueuedOrSent(long start)
+    {
+        string name = start.ToString();
+        string sentPath = Path.Combine(_queueDir, SentFile);
+        return File.Exists(Path.Combine(_queueDir, $"{name}.json"))
+            || (File.Exists(sentPath) && File.ReadLines(sentPath).Contains(name));
     }
 
     /// <summary>The profile folder a history file sits in ("profile1"), or null for one the mod can't place.</summary>

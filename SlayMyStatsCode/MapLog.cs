@@ -39,6 +39,14 @@ public static class MapLog
         return all;
     }
 
+    internal static void Restore(JsonArray? maps)
+    {
+        if (maps == null) return;
+        foreach (JsonObject map in maps.OfType<JsonObject>())
+            if (map["act"] is JsonValue act && act.TryGetValue<int>(out int index))
+                Acts[index] = (JsonObject)map.DeepClone();
+    }
+
     public static void Visit(RunState state)
     {
         int act = state.CurrentActIndex;
@@ -85,7 +93,12 @@ public static class MapVisitPatch
     [HarmonyPostfix]
     public static void Postfix(RunState __instance)
     {
-        try { MapLog.Visit(__instance); }
+        try
+        {
+            RunCheckpoint.EnsureLoaded();
+            MapLog.Visit(__instance);
+            RunCheckpoint.Save();
+        }
         catch (Exception e) { MainFile.Logger.Error($"Map capture failed: {e}"); }
     }
 }
