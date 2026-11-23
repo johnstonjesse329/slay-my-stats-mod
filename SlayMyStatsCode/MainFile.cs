@@ -58,7 +58,7 @@ public partial class MainFile : Node
                     RunCheckpoint.Root, (path, profile, start) =>
                     {
                         if (Uploaders.Where(u => u.Wants(profile)).All(u => u.HasQueuedOrSent(start)))
-                            File.Delete(path);
+                            CheckpointFile.Delete(path);
                     }));
                 sites.Add(name);
             }

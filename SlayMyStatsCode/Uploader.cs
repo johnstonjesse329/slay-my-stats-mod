@@ -295,14 +295,13 @@ public sealed class Uploader
                     continue;
                 }
                 if (Directory.GetFiles(_queueDir, "*.json").Length >= MaxQueuedRuns) break;
-                var checkpoint = JsonNode.Parse(File.ReadAllText(path));
-                if (checkpoint?["mods"] is not JsonArray mods) continue;
+                CheckpointFile.Saved checkpoint = CheckpointFile.Read(path);
+                if (checkpoint.Mods is not JsonArray mods) continue;
                 string? history = Directory.EnumerateFiles(accountDir, $"{start}.run", SearchOption.AllDirectories)
                     .FirstOrDefault(file => ProfileOf(accountDir, file) == profile
                         && Path.GetFileName(Path.GetDirectoryName(file)) == "history");
                 if (history == null) continue;
-                Enqueue(File.ReadAllText(history), mods, checkpoint["telemetry"] as JsonObject,
-                    checkpoint["maps"] as JsonArray, profile);
+                Enqueue(File.ReadAllText(history), mods, checkpoint.Telemetry, checkpoint.Maps, profile);
                 skip.Add(start.ToString());
                 _checkpointQueued?.Invoke(path, profile, start);
             }

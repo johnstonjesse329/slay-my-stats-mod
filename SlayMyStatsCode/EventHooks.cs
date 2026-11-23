@@ -33,11 +33,6 @@ public static class EventHooks
         DamageSlots.Clear();
     }
 
-    /// <summary>Where the run so far is written after every fight, so a single fight
-    /// is enough to check the recording.</summary>
-    public static string DebugPath() =>
-        Path.Combine(OS.GetUserDataDir(), "SlayMyStats", "telemetry", "live.ndjson");
-
     internal static void Safe(Action body)
     {
         if (_broken) return;
@@ -571,7 +566,6 @@ public static class EventCombatEnd
     {
         EventHooks.FightEnd(combatState);
         RunCheckpoint.Save();
-        EventLog.WriteDebug(EventHooks.DebugPath());
     }
 }
 

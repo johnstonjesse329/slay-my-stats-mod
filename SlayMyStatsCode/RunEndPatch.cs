@@ -31,7 +31,7 @@ public static class RunEndPatch
             JsonObject? telemetry = EventLog.Take();
             JsonArray? maps = MapLog.Take();
             RunCheckpoint.Save(mods);
-            string? checkpoint = RunCheckpoint.Detach(history.StartTime);
+            (string? checkpoint, Task written) = RunCheckpoint.Detach(history.StartTime);
             MainFile.Logger.Info($"Run ended: {history.StartTime}.run win={history.Win} abandoned={history.WasAbandoned}.");
 
             string steamDir = Path.Combine(Godot.OS.GetUserDataDir(), "steam");
@@ -50,7 +50,11 @@ public static class RunEndPatch
                         uploader.Enqueue(json, mods, telemetry, maps, profile);
                         uploader.Kick();
                     }
-                    if (checkpoint != null) File.Delete(checkpoint);
+                    if (checkpoint != null)
+                    {
+                        written.Wait();
+                        CheckpointFile.Delete(checkpoint);
+                    }
                 }
                 catch (Exception e)
                 {

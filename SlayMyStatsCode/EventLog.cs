@@ -41,10 +41,16 @@ public static class EventLog
     private static int _turn;
     private static bool _truncated;
     private static bool _broken;
+    /// <summary>How many entries, from the start, the checkpoint file already holds.</summary>
+    private static int _saved;
+    /// <summary>The file holds entries the log no longer has, so the next save writes it whole.</summary>
+    private static bool _rewrite;
 
     public static bool HasEvents => Entries.Count > 0;
 
     public static int Count => Entries.Count;
+
+    public static bool Truncated => _truncated;
 
     /// <summary>The game's own turn number, stamped on every event so an event that
     /// arrives outside any call that names a turn still says which one it was in.</summary>
@@ -64,12 +70,15 @@ public static class EventLog
         if (_fight < 0) return;
         int start = Entries.FindLastIndex(e => e.Fight == _fight && e.Kind == "fight0");
         if (start < 0) return;
+        if (start < _saved) _rewrite = true;
         Entries.RemoveRange(start, Entries.Count - start);
         _fight--;
         _truncated = false;
     }
 
-    internal static void Restore(JsonObject? telemetry)
+    /// <param name="inFile">The checkpoint's log file already holds these entries; when false (a checkpoint
+    /// from before the log had its own file) the next save writes it whole.</param>
+    internal static void Restore(JsonObject? telemetry, bool inFile = true)
     {
         if (telemetry?["log"] is not JsonArray log) return;
         foreach (JsonObject e in log.OfType<JsonObject>().Take(MaxEvents))
@@ -84,6 +93,7 @@ public static class EventLog
             });
         }
         if (Entries.Count == 0) return;
+        _saved = inFile ? Entries.Count : 0;
         _seq = Entries[^1].Seq;
         _fight = Entries.Any(e => e.Kind == "fight0") ? Entries[^1].Fight : -1;
         _truncated = (bool?)telemetry["truncated"] ?? false;
@@ -124,7 +134,32 @@ public static class EventLog
         _turn = 0;
         _truncated = false;
         _broken = false;
+        _saved = 0;
+        _rewrite = false;
     }
+
+    /// <summary>
+    /// The entries the checkpoint file doesn't hold yet, as its lines, and whether they replace the file
+    /// rather than go on its end: they do for a new file, after <see cref="DropLastFight"/> took back lines it
+    /// holds, or when <paramref name="whole"/> says the last write failed. From then on they count as saved.
+    /// </summary>
+    public static (string Lines, bool Whole) TakeUnsaved(bool whole = false)
+    {
+        whole |= _rewrite || _saved > Entries.Count || (_saved == 0 && Entries.Count > 0);
+        StringBuilder sb = new();
+        for (int i = whole ? 0 : _saved; i < Entries.Count; i++) AppendLine(sb, Entries[i]);
+        _saved = Entries.Count;
+        _rewrite = false;
+        return (sb.ToString(), whole);
+    }
+
+    private static void AppendLine(StringBuilder sb, Entry e) =>
+        sb.Append("{\"q\":").Append(e.Seq)
+          .Append(",\"f\":").Append(e.Fight)
+          .Append(",\"t\":").Append(e.Turn)
+          .Append(",\"k\":").Append(JsonValue.Create(e.Kind).ToJsonString())
+          .Append(",\"a\":").Append(e.Args.ToJsonString())
+          .Append("}\n");
 
     /// <summary>The whole run as one object, for the upload, or null when nothing
     /// was recorded.</summary>
@@ -144,32 +179,5 @@ public static class EventLog
             });
         }
         return new JsonObject { ["v"] = SchemaVersion, ["log"] = log, ["truncated"] = _truncated };
-    }
-
-    /// <summary>The run so far, written over itself after every fight: one fight of
-    /// play is then enough to check the recording, without finishing the run.</summary>
-    public static void WriteDebug(string path)
-    {
-        if (Entries.Count == 0) return;
-        try
-        {
-            StringBuilder sb = new();
-            foreach (Entry e in Entries)
-            {
-                sb.Append("{\"q\":").Append(e.Seq)
-                  .Append(",\"f\":").Append(e.Fight)
-                  .Append(",\"t\":").Append(e.Turn)
-                  .Append(",\"k\":\"").Append(e.Kind)
-                  .Append("\",\"a\":").Append(e.Args.ToJsonString())
-                  .AppendLine("}");
-            }
-            string? dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(path, sb.ToString());
-        }
-        catch
-        {
-            // A debug file that cannot be written is not worth a game error.
-        }
     }
 }
