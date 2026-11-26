@@ -1,5 +1,7 @@
+using System.Text.Json.Nodes;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -36,6 +38,24 @@ public static class LiveRun
         return SlayMyStatsCode.Strength.Of(run, demand, RunManager.Instance.DebugOnlyGetState()!.CurrentActIndex,
             LocalPlayer());
     }
+
+    /// <summary>How a card or relic connects to the local player's deck and relics; null outside a run or with
+    /// nothing to show.</summary>
+    public static Synergy? Synergy(JsonObject data, AbstractModel model)
+    {
+        if (RunManager.Instance.DebugOnlyGetState() is not { } state || Item(model) is not { } item) return null;
+        var player = state.Players[LocalPlayer()];
+        List<SynergyItem> owned = player.Deck.Cards.Cast<AbstractModel>().Concat(player.Relics)
+            .Select(Item).OfType<SynergyItem>().ToList();
+        return SlayMyStatsCode.Synergy.Of(data, player.Character.Id.Entry, item, owned);
+    }
+
+    private static SynergyItem? Item(AbstractModel model) => model switch
+    {
+        CardModel card => new(card.Id.ToString(), card.Title, Upgraded: card.IsUpgraded),
+        RelicModel relic => new(relic.Id.ToString(), relic.Title.GetFormattedText(), Relic: true),
+        _ => null,
+    };
 
     /// <summary>In a party, the damage is the local player's; each point's rows are in the players' order.</summary>
     private static int LocalPlayer() => Math.Max(0, RunManager.Instance.DebugOnlyGetState()!.Players.ToList()

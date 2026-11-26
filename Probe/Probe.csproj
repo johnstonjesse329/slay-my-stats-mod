@@ -26,6 +26,7 @@
         <Compile Include="..\SlayMyStatsCode\Ruler.cs" Link="Ruler.cs"/>
         <Compile Include="..\SlayMyStatsCode\Rates.cs" Link="Rates.cs"/>
         <Compile Include="..\SlayMyStatsCode\Strength.cs" Link="Strength.cs"/>
+        <Compile Include="..\SlayMyStatsCode\Synergy.cs" Link="Synergy.cs"/>
     </ItemGroup>
 
     <!-- Outside the game nothing is loaded yet, so the probe carries its own copies of the game's Steam libraries. -->
