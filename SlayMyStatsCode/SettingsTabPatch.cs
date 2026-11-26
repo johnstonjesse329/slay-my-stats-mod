@@ -20,7 +20,7 @@ public static class SettingsTabPatch
         ("uploadsEnabled", "Upload runs",
             "When on, your runs are uploaded to Slay My Stats. Runs skipped while it's off are sent once it's back on."),
         ("showCardStats", "Card and relic stats",
-            "When on, card and relic tips show pick rates, win rates and pairs with your deck."),
+            "When on, card and relic tips show pick rates and win rates."),
         ("showRunStrength", "Run strength",
             "When on, projects your current strength by floor vs winning runs on average."),
         ("showSynergyHints", "Synergy hints",
