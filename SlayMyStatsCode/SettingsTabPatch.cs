@@ -24,7 +24,7 @@ public static class SettingsTabPatch
         ("showRunStrength", "Run strength",
             "When on, projects your current strength by floor vs winning runs on average."),
         ("showSynergyHints", "Synergy hints",
-            "When on, card tips show what a card gives your deck or wants from it."),
+            "When on, card and relic tips show what they give your deck or want from it."),
     ];
 
     [HarmonyPostfix]

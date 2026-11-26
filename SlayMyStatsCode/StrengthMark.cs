@@ -12,7 +12,7 @@ namespace SlayMyStats.SlayMyStatsCode;
 
 /// <summary>
 /// The run strength mark in the top bar, after the floor and boss icons: the site's up arrow, bullseye or down
-/// arrow for the current act, with a tip giving the numbers behind it. Hidden until the act can be read.
+/// arrow for the latest act fought in, with a tip giving the numbers behind it. Hidden before the first fight.
 /// </summary>
 [HarmonyPatch(typeof(NTopBar), nameof(NTopBar.Initialize))]
 public static class StrengthMarkPatch
@@ -149,12 +149,8 @@ public static class StrengthMarkPatch
         cells.AddRange(Row("[b]Act total[/b]", Blue(Whole(act.Taken)), Whole(act.WinTaken),
             Blue(Whole(act.Turns)), Tenth(act.WinTurns)));
 
-        string words = $"Act {act.Act + 1}: {Word(act.Verdict)}\n[table=5]{string.Concat(cells)}[/table]";
-        if (strength.Earlier.Count > 0)
-        {
-            words += "\n\n" + string.Join("\n", strength.Earlier.Select(a => $"Act {a.Act + 1}: {Word(a.Verdict)}"));
-        }
-        return words;
+        IEnumerable<string> acts = strength.Earlier.Append(act).Select(a => $"Act {a.Act + 1}: {Word(a.Verdict)}");
+        return $"{string.Join("\n", acts)}\n[table=5]{string.Concat(cells)}[/table]";
     }
 
     /// <summary>One table row: the name on the left, the numbers on the right.</summary>

@@ -161,9 +161,9 @@ public static class Ruler
     }
 
     /// <summary>One row per act with enough fights. <paramref name="taken"/> picks whose damage counts:
-    /// <see cref="Fight.Each"/>[local player] in a party.</summary>
+    /// <see cref="Fight.Each"/>[local player] in a party. <paramref name="min"/> is how many fights are enough.</summary>
     public static List<(int Act, int Fights, Totals Totals, double Each)> ActTotals(IReadOnlyList<Fight> fights,
-        RulerData demand, Func<Fight, double>? taken = null)
+        RulerData demand, Func<Fight, double>? taken = null, int min = ActMin)
     {
         taken ??= f => f.Taken;
         List<(int, int, Totals, double)> rows = [];
@@ -176,7 +176,7 @@ public static class Ruler
                     !demand.Encounters.TryGetValue(f.Encounter, out Encounter? d)) continue;
                 if (WinnersOf(f, d) is { } how) part.Add((f, how));
             }
-            if (part.Count < ActMin) continue;
+            if (part.Count < min) continue;
             Totals totals = Total(Sum(part.Select(p => (double)p.Fight.Turns)), Sum(part.Select(p => p.How.Turns!.Value)),
                 Sum(part.Select(p => taken(p.Fight))), Sum(part.Select(p => p.How.Taken)));
             rows.Add((act, part.Count, totals, totals.Guard / totals.Pace));
@@ -185,10 +185,10 @@ public static class Ruler
     }
 
     public static List<ActReading> ActReadings(IReadOnlyList<Fight> fights, RulerData demand,
-        Func<Fight, double>? taken = null)
+        Func<Fight, double>? taken = null, int min = ActMin)
     {
         List<ActReading> rows = [];
-        foreach ((int act, int count, Totals t, double each) in ActTotals(fights, demand, taken))
+        foreach ((int act, int count, Totals t, double each) in ActTotals(fights, demand, taken, min))
         {
             Cut cut = ActCut(demand.Cuts, act);
             string place = Verdict(t.Pace, t.Guard, cut);

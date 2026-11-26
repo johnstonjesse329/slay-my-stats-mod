@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SlayMyStats.SlayMyStatsCode;
 
 namespace SlayMyStats.Probe;
@@ -155,10 +156,40 @@ public static class Stats
                 Rooms = [new RunRoom { ModelId = "E", MonsterIds = ["M"], Turns = 4 }],
             }, fights).ToList()],
         };
-        Check("strength: two fights don't read an act", Strength.Of(Played(2), ruler, 0, 0) == null);
+        Check("strength: no fight, no reading", Strength.Of(Played(0), ruler, 0, 0) == null);
+        Check("strength: one fight reads the act",
+            Strength.Of(Played(1), ruler, 0, 0) is { Current.Act: 0, Fights.Count: 1 });
         Check("strength: three do, with a line for each",
             Strength.Of(Played(3), ruler, 0, 0) is { Current.Verdict: Ruler.Ahead, Fights.Count: 3, Earlier.Count: 0 });
-        Check("strength: an act not yet fought in shows nothing", Strength.Of(Played(3), ruler, 1, 0) == null);
+        Check("strength: a new act keeps the last reading until its first fight",
+            Strength.Of(Played(3), ruler, 1, 0) is { Current.Act: 0, Earlier.Count: 0 });
+
+        JsonObject links = JsonNode.Parse("""
+            {"basic":["STRIKE","BASH"],
+             "archetypes":{"IRONCLAD":{"Strength":{"cards":["INFLAME"]},"Block":{"cards":["OTHER"]}}},
+             "synergy":{"cards":{"INFLAME":[["power:Strength"],[]],"WHIRL":[[],["power:Strength"]],
+                          "BLEED":[["HP loss"],[]],"RUPTURE":[["power:Strength"],["HP loss"]],
+                          "BASH":[["power:Vulnerable"],[]],"STRIKE":[[],["power:Vulnerable"]]},
+                        "cardVariants":{"TWIN":[[[],[]],[[],["power:Strength"]]]},
+                        "relics":{"VAJRA":[["power:Strength"],[]]}}}
+            """)!.AsObject();
+        SynergyItem Card(string id, bool upgraded = false) => new(id, id.ToLowerInvariant(), Upgraded: upgraded);
+        SynergyItem vajra = new("VAJRA", "vajra", Relic: true);
+        Synergy? Links(SynergyItem item, params SynergyItem[] owned) => SlayMyStatsCode.Synergy.Of(links, "IRONCLAD", item, owned);
+        string Said(Synergy? s) => s == null ? "none" : string.Join(" | ",
+            s.Wants.Select(l => $"wants {l.Key}: {string.Join(",", l.Names)}")
+                .Concat(s.Gives.Select(l => $"gives {l.Key}: {string.Join(",", l.Names)}"))
+                .Concat(s.Archetypes));
+        Check("synergy: wants from the deck, gives to it, with the archetype",
+            Said(Links(Card("RUPTURE"), Card("BLEED"), Card("BLEED"), Card("WHIRL"))) ==
+            "wants HP loss: bleed | gives Strength: whirl" &&
+            Said(Links(Card("INFLAME"), Card("WHIRL"))) == "gives Strength: whirl | Strength");
+        Check("synergy: an item never links to itself", Links(Card("RUPTURE"), Card("RUPTURE")) == null);
+        Check("synergy: a relic gives, and has no archetype",
+            Said(Links(vajra, Card("WHIRL"))) == "gives Strength: whirl");
+        Check("synergy: the upgraded card has its own row",
+            Links(Card("TWIN"), vajra) == null && Said(Links(Card("TWIN", true), vajra)) == "wants Strength: vajra");
+        Check("synergy: starters linking only each other say nothing", Links(Card("BASH"), Card("STRIKE")) == null);
 
         string root = Directory.CreateTempSubdirectory("smst-stats").FullName;
         List<string> log = [];
