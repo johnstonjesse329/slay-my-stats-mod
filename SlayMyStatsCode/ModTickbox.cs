@@ -56,6 +56,7 @@ public partial class ModTickbox : NSettingsTickbox
         if (ConfigEditor.SetFlag(_path, _key, value))
         {
             MainFile.Logger.Info($"Settings: {_key} = {(value ? "true" : "false")}");
+            LiveRun.ChangedSettings();
             return;
         }
         MainFile.Logger.Error($"Settings: couldn't write {_key} to {_path}");

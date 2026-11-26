@@ -7,8 +7,7 @@ namespace SlayMyStats.SlayMyStatsCode;
 
 /// <summary>
 /// The run being played, for the in-game stats: the snapshot it holds on to, and the game's run state in the shape
-/// <see cref="Ruler"/> reads. The run strength isn't shown yet; with debug on, the reading so far is
-/// logged after each won fight.
+/// <see cref="Ruler"/> reads. With debug on, the reading so far is also logged after each won fight.
 /// Nothing here may disturb the game.
 /// </summary>
 public static class LiveRun
@@ -22,6 +21,25 @@ public static class LiveRun
 
     /// <summary>What the player wants shown, as their config says now; null before <see cref="Watch"/>.</summary>
     public static DisplaySettings? Settings => _settings?.Invoke();
+
+    /// <summary>The player ticked or unticked a setting in the game.</summary>
+    public static event Action? SettingsChanged;
+
+    public static void ChangedSettings() => SettingsChanged?.Invoke();
+
+    /// <summary>What the run strength mark has to show now; null if it's switched off, there is no run or
+    /// snapshot, or the act can't be read yet.</summary>
+    public static Strength? Strength()
+    {
+        if (_settings?.Invoke().RunStrength != true || Pack?.Data.Ruler is not { } demand || Record() is not { } run)
+            return null;
+        return SlayMyStatsCode.Strength.Of(run, demand, RunManager.Instance.DebugOnlyGetState()!.CurrentActIndex,
+            LocalPlayer());
+    }
+
+    /// <summary>In a party, the damage is the local player's; each point's rows are in the players' order.</summary>
+    private static int LocalPlayer() => Math.Max(0, RunManager.Instance.DebugOnlyGetState()!.Players.ToList()
+        .FindIndex(p => p.NetId == LocalContext.NetId));
 
     public static void Watch(PackStore store, Func<DisplaySettings> settings)
     {
@@ -72,16 +90,13 @@ public static class LiveRun
 
     private static void OnCombatWon(CombatRoom room)
     {
-        // Until there is an overlay to feed, only testers pay for this.
         if (!RunHealth.Enabled) return;
         try
         {
             if (_settings?.Invoke().RunStrength != true || Pack?.Data.Ruler is not { } demand || Record() is not { } run)
                 return;
             List<Fight> fights = Ruler.RunFights(run);
-            // In a party, the damage is the local player's; each point's rows are in the players' order.
-            int who = Math.Max(0, RunManager.Instance.DebugOnlyGetState()!.Players.ToList()
-                .FindIndex(p => p.NetId == LocalContext.NetId));
+            int who = LocalPlayer();
             List<ActReading> acts = Ruler.ActReadings(fights, demand,
                 f => f.Coop && who < f.Each.Length ? f.Each[who] : f.Taken);
             string reading = acts.Count == 0
