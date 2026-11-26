@@ -149,14 +149,10 @@ public static class StrengthMarkPatch
         cells.AddRange(Row("[b]Act total[/b]", Blue(Whole(act.Taken)), Whole(act.WinTaken),
             Blue(Whole(act.Turns)), Tenth(act.WinTurns)));
 
-        string words = $"Act {act.Act + 1}: {Word(act.Verdict)}
-[table=5]{string.Concat(cells)}[/table]";
+        string words = $"Act {act.Act + 1}: {Word(act.Verdict)}\n[table=5]{string.Concat(cells)}[/table]";
         if (strength.Earlier.Count > 0)
         {
-            words += "
-
-" + string.Join("
-", strength.Earlier.Select(a => $"Act {a.Act + 1}: {Word(a.Verdict)}"));
+            words += "\n\n" + string.Join("\n", strength.Earlier.Select(a => $"Act {a.Act + 1}: {Word(a.Verdict)}"));
         }
         return words;
     }
