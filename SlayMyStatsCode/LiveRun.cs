@@ -40,8 +40,17 @@ public static class LiveRun
             return null;
         RunState state = RunManager.Instance.DebugOnlyGetState()!;
         // The room after the last boss: the run is won.
-        return SlayMyStatsCode.Strength.Of(run, demand, state.CurrentActIndex, LocalPlayer(),
+        Strength? strength = SlayMyStatsCode.Strength.Of(run, demand, state.CurrentActIndex, LocalPlayer(),
             won: state.CurrentRoom?.IsVictoryRoom == true);
+        return strength == null ? null : strength with { Dealt = DealtSoFar(run, LocalPlayer()) };
+    }
+
+    /// <summary>From the run's event log, which is only kept per run while the mod has somewhere to upload.</summary>
+    private static Dealt? DealtSoFar(RunRecord run, int player)
+    {
+        if (MainFile.Uploaders.Count == 0) return null;
+        RunCheckpoint.EnsureLoaded();       // after a quit, the log comes back from the checkpoint
+        return EventLog.DealtBy(player, Ruler.RunFights(run).Count);
     }
 
     /// <summary>How a card or relic connects to the local player's deck and relics; null outside a run or with

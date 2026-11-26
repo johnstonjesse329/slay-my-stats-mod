@@ -156,7 +156,7 @@ public static class StrengthMarkPatch
     {
         if (strength.Run is { } run) return RunWords(strength, run);
         ActReading act = strength.Current;
-        List<string> cells = Row("Fight", "Damage", "Avg win", "Turns", "Avg win");
+        List<string> cells = Row("Fight", "Dmg taken", "Avg win", "Turns", "Avg win");
         foreach (FightLine f in strength.Fights)
         {
             cells.AddRange(Row(Name(f.Encounter), Blue(Whole(f.Taken)), Whole(f.WinTaken),
@@ -165,7 +165,7 @@ public static class StrengthMarkPatch
         cells.AddRange(Sums("[b]Act total[/b]", act));
 
         IEnumerable<string> acts = strength.Earlier.Append(act).Select(a => $"Act {a.Act + 1}: {Word(a.Verdict)}");
-        return $"{string.Join("\n", acts)}\n[table=5]{string.Concat(cells)}[/table]";
+        return $"{string.Join("\n", acts)}\n[table=5]{string.Concat(cells)}[/table]{DealtWords(strength.Dealt)}";
     }
 
     /// <summary>The tip of a won run: the run and each act, then their damage and turns.</summary>
@@ -173,14 +173,21 @@ public static class StrengthMarkPatch
     {
         List<ActReading> acts = [.. strength.Earlier, strength.Current];
         List<string> lines = [$"Run: {(run.Op ? "[green]OP[/green]" : Word(run.Verdict))}"];
-        List<string> cells = Row("Act", "Damage", "Avg win", "Turns", "Avg win");
+        List<string> cells = Row("Act", "Dmg taken", "Avg win", "Turns", "Avg win");
         foreach (ActReading act in acts)
         {
             lines.Add($"Act {act.Act + 1}: {Word(act.Verdict)}");
             cells.AddRange(Sums($"Act {act.Act + 1}", act));
         }
         cells.AddRange(Sums("[b]Run total[/b]", run.Totals));
-        return $"{string.Join("\n", lines)}\n[table=5]{string.Concat(cells)}[/table]";
+        return $"{string.Join("\n", lines)}\n[table=5]{string.Concat(cells)}[/table]{DealtWords(strength.Dealt)}";
+    }
+
+    private static string DealtWords(Dealt? dealt)
+    {
+        if (dealt == null) return "";
+        string hit = dealt.BiggestHit > 0 ? $"\nBiggest hit: {Blue(Whole(dealt.BiggestHit))}" : "";
+        return $"\nTotal damage: {Blue(Whole(dealt.Total))}{hit}";
     }
 
     private static List<string> Sums(string name, Totals sums) =>
