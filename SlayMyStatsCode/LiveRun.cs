@@ -7,7 +7,8 @@ namespace SlayMyStats.SlayMyStatsCode;
 
 /// <summary>
 /// The run being played, for the in-game stats: the snapshot it holds on to, and the game's run state in the shape
-/// <see cref="Ruler"/> reads. Nothing is shown yet; with debug on, the reading so far is logged after each won fight.
+/// <see cref="Ruler"/> reads. The run strength isn't shown yet; with debug on, the reading so far is
+/// logged after each won fight.
 /// Nothing here may disturb the game.
 /// </summary>
 public static class LiveRun
@@ -18,6 +19,9 @@ public static class LiveRun
 
     /// <summary>The snapshot for this run. One downloaded mid-run waits for the next, unless there was none.</summary>
     public static StatsPack? Pack => _pack ??= _store?.Current;
+
+    /// <summary>What the player wants shown, as their config says now; null before <see cref="Watch"/>.</summary>
+    public static DisplaySettings? Settings => _settings?.Invoke();
 
     public static void Watch(PackStore store, Func<DisplaySettings> settings)
     {

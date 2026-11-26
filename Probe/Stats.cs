@@ -128,6 +128,17 @@ public static class Stats
             Console.WriteLine($"{(pass ? "ok  " : "FAIL")} {name}");
         }
 
+        PackData rated = JsonSerializer.Deserialize<PackData>("""
+            {"v":1,"lanes":{"solo":{"cards":{"A":[200,81],"B":[19,19]},"relics":{"R":[20,5]},
+              "picks":{"X":{"cards":{"A":[3,0,15,0],"B":[1,0,19,0]},"relics":{}},
+                       "Y":{"cards":{"A":[7,0,25,0]},"relics":{}}}}}}
+            """)!;
+        Check("rates: wins and picks summed over characters", Rates.Of(rated, false, "A", false) == new Rates(41, 25));
+        Check("rates: under 20 runs and offers shows nothing", Rates.Of(rated, false, "B", false) == null);
+        Check("rates: a relic with no offers shows its win rate", Rates.Of(rated, false, "R", true) == new Rates(25, null));
+        Check("rates: an unknown id or missing lane shows nothing",
+            Rates.Of(rated, false, "Z", false) == null && Rates.Of(rated, true, "A", false) == null);
+
         string root = Directory.CreateTempSubdirectory("smst-stats").FullName;
         List<string> log = [];
         using FakeSite site = new();
