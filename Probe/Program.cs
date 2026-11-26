@@ -171,10 +171,31 @@ public static class Program
         Hit(1, 50, 0, "CARD.STRIKE");           // the other player's
         Hit(0, 40, 0, "CARD.STRIKE", target: "P");
         Hit(0, 40, 0, null, by: "Osty");
-        bool dealt = EventLog.DealtBy(0, 1) == new Dealt(42, 21) && EventLog.DealtBy(0, 2) == null;
-        Console.WriteLine($"damage dealt: {EventLog.DealtBy(0, 1)}");
+        void Play(int slot, int turn) => EventLog.Add("play1", new() { ["sourceSlot"] = slot, ["playerTurn"] = turn });
+        void Energy(int slot, int amount, int? turn = null) =>
+            EventLog.Add("energy+", new() { ["targetSlot"] = slot, ["n"] = amount, ["playerTurn"] = turn });
+        EventLog.Add("erese", new() { ["targetSlot"] = 0, ["turn"] = 1, ["energy"] = 3 });
+        Energy(0, 2);                           // old log: use this player's last turn marker
+        Play(0, 1);
+        Play(0, 1);
+        Energy(0, 3, 1);
+        Play(1, 2);
+        Energy(1, 100, 2);                     // the other player's extra turn
+        Play(0, 2);
+        Energy(0, 4);
+        EventLog.NewFight();
+        EventLog.Add("fight0");
+        Play(0, 1);                            // turn one of a different fight
+        Energy(0, 4, 1);
+        var expected = new CombatRecords(42, 21, 2, 5);
+        bool records = EventLog.RecordsFor(0, 2) == expected && EventLog.RecordsFor(0, 3) == null;
+        var checkpoint = EventLog.Take();
+        EventLog.Reset();
+        EventLog.Restore(checkpoint);
+        records &= EventLog.RecordsFor(0, 2) == expected;
+        Console.WriteLine($"combat records: {EventLog.RecordsFor(0, 2)}");
 
-        bool ok = dealt && clean.Length == 0
+        bool ok = records && clean.Length == 0
                   && twice.Length == 1 && twice[0].Contains("duplicate-fight")
                   && open.Length == 1 && open[0].Contains("fight-unclosed");
         Console.WriteLine($"clean: {clean.Length} findings; repeated fight: {string.Join("|", twice)}; unclosed: {string.Join("|", open)}");

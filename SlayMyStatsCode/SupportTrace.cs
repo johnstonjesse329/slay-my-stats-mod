@@ -100,6 +100,7 @@ internal static class SupportEnergyGained
         {
             ["targetSlot"] = EventHooks.Slot(____player.Creature),
             ["n"] = gained,
+            ["playerTurn"] = __instance.TurnNumber,
             ["energy"] = __instance.Energy
         });
     });

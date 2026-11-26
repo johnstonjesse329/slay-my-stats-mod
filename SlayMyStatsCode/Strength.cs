@@ -11,8 +11,8 @@ public sealed record FightLine(string Encounter, int Turns, double WinTurns, dou
 public sealed record Strength(ActReading Current, IReadOnlyList<FightLine> Fights, IReadOnlyList<ActReading> Earlier,
     RunReading? Run = null)
 {
-    /// <summary>The local player's damage dealt; null when the run's event log can't say.</summary>
-    public Dealt? Dealt { get; init; }
+    /// <summary>The number of fights the log must cover for the local player's run records.</summary>
+    public int FightCount { get; init; }
 
     /// <summary>The reading of <paramref name="act"/>, or until it has a fight, of the act before. Null with no
     /// fight to read.</summary>
@@ -35,6 +35,6 @@ public sealed record Strength(ActReading Current, IReadOnlyList<FightLine> Fight
                 lines.Add(new FightLine(f.Encounter, f.Turns, how.Turns!.Value, Taken(f), how.Taken));
         }
         return new Strength(current, lines, acts.Where(a => a.Act < current.Act).ToList(),
-            won ? Ruler.ReadRun(acts, demand.Cuts) : null);
+            won ? Ruler.ReadRun(acts, demand.Cuts) : null) { FightCount = fights.Count };
     }
 }

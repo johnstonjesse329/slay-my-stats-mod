@@ -29,6 +29,7 @@ public static class RunEndPatch
             RunCheckpoint.EnsureLoaded(history.StartTime);
             JsonArray mods = LoadedMods();
             EventLog.Verify(runEnded: true);
+            if (history.Win) LiveRun.KeepFinishedRecords();
             JsonObject? telemetry = EventLog.Take();
             JsonArray? maps = MapLog.Take();
             RunCheckpoint.Save(mods);

@@ -17,6 +17,7 @@ public static class LiveRun
     private static PackStore? _store;
     private static Func<DisplaySettings>? _settings;
     private static StatsPack? _pack;
+    private static CombatRecords? _finishedRecords;
 
     /// <summary>The snapshot for this run. One downloaded mid-run waits for the next, unless there was none.</summary>
     public static StatsPack? Pack => _pack ??= _store?.Current;
@@ -40,17 +41,30 @@ public static class LiveRun
             return null;
         RunState state = RunManager.Instance.DebugOnlyGetState()!;
         // The room after the last boss: the run is won.
-        Strength? strength = SlayMyStatsCode.Strength.Of(run, demand, state.CurrentActIndex, LocalPlayer(),
+        return SlayMyStatsCode.Strength.Of(run, demand, state.CurrentActIndex, LocalPlayer(),
             won: state.CurrentRoom?.IsVictoryRoom == true);
-        return strength == null ? null : strength with { Dealt = DealtSoFar(run, LocalPlayer()) };
     }
 
-    /// <summary>From the run's event log, which is only kept per run while the mod has somewhere to upload.</summary>
-    private static Dealt? DealtSoFar(RunRecord run, int player)
+    /// <summary>Read on hover so a record from the current fight shows without waiting for combat to end.</summary>
+    public static CombatRecords? RecordsSoFar(int fights)
     {
-        if (MainFile.Uploaders.Count == 0) return null;
+        if (_finishedRecords is { } finished) return finished;
         RunCheckpoint.EnsureLoaded();       // after a quit, the log comes back from the checkpoint
-        return EventLog.DealtBy(player, Ruler.RunFights(run).Count);
+        return EventLog.RecordsFor(LocalPlayer(), fights);
+    }
+
+    /// <summary>Keep the records available on the victory screen after the upload takes the event log.</summary>
+    internal static void KeepFinishedRecords()
+    {
+        try
+        {
+            if (Record() is { } run)
+                _finishedRecords = EventLog.RecordsFor(LocalPlayer(), Ruler.RunFights(run).Count);
+        }
+        catch (Exception e)
+        {
+            MainFile.Logger.Error($"Stats: couldn't save the finished combat records: {e}");
+        }
     }
 
     /// <summary>How a card or relic connects to the local player's deck and relics; null outside a run or with
@@ -79,7 +93,14 @@ public static class LiveRun
     {
         _store = store;
         _settings = settings;
-        RunManager.Instance.RunStarted += _ => _pack = store.Current;
+        RunManager.Instance.RunStarted += _ =>
+        {
+            _pack = store.Current;
+            _finishedRecords = null;
+            if (MainFile.Uploaders.Count != 0) return;
+            EventHooks.Reset();
+            EventLog.Reset();
+        };
         CombatManager.Instance.CombatWon += OnCombatWon;
     }
 

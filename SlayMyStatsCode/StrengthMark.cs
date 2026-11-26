@@ -2,6 +2,8 @@ using System.Globalization;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Helpers;
+using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.HoverTips;
@@ -23,6 +25,7 @@ public static class StrengthMarkPatch
 
     private const float Radius = 22;
     private const float TipTextWidth = 560;
+    private const int TableColumnGap = 12;
 
     [HarmonyPostfix]
     public static void Postfix(NTopBar __instance)
@@ -75,7 +78,8 @@ public static class StrengthMarkPatch
             {
                 if (strength == null) return;
                 NHoverTipSet? tips =
-                    NHoverTipSet.CreateAndShow(mark, ModTip.Create("Slay My Stats", Words(strength)));
+                    NHoverTipSet.CreateAndShow(mark, ModTip.Create("Slay My Stats",
+                        Words(strength) + RecordWords(LiveRun.RecordsSoFar(strength.FightCount))));
                 if (tips == null) return;
                 Widen(tips);
                 tips.SetGlobalPosition(mark.GlobalPosition + new Vector2(0, mark.Size.Y + 20));
@@ -147,7 +151,11 @@ public static class StrengthMarkPatch
     {
         Control tip = tips.GetNode("textHoverTipContainer").GetChild<Control>(0);
         RichTextLabel text = tip.GetNode<RichTextLabel>("%Description");
-        text.AddThemeConstantOverride("table_h_separation", 12);
+        text.AddThemeConstantOverride("table_h_separation", TableColumnGap);
+        // RichTextLabel adds one more column gap after sizing the table to the available width.
+        StyleBox style = (StyleBox)text.GetThemeStylebox("normal").Duplicate();
+        style.ContentMarginRight = style.GetMargin(Side.Right) + TableColumnGap;
+        text.AddThemeStyleboxOverride("normal", style);
         text.AutowrapMode = TextServer.AutowrapMode.Word;
         text.CustomMinimumSize = new Vector2(TipTextWidth, 0);
         tip.ResetSize();
@@ -166,7 +174,7 @@ public static class StrengthMarkPatch
         cells.AddRange(Sums("[b]Act total[/b]", act));
 
         IEnumerable<string> acts = strength.Earlier.Append(act).Select(a => $"Act {a.Act + 1}: {Word(a.Verdict)}");
-        return $"{string.Join("\n", acts)}\n[table=5]{string.Concat(cells)}[/table]{DealtWords(strength.Dealt)}";
+        return $"{string.Join("\n", acts)}\n[table=5]{string.Concat(cells)}[/table]";
     }
 
     /// <summary>The tip of a won run: the run and each act, then their damage and turns.</summary>
@@ -181,14 +189,16 @@ public static class StrengthMarkPatch
             cells.AddRange(Sums($"Act {act.Act + 1}", act));
         }
         cells.AddRange(Sums("[b]Run total[/b]", run.Totals));
-        return $"{string.Join("\n", lines)}\n[table=5]{string.Concat(cells)}[/table]{DealtWords(strength.Dealt)}";
+        return $"{string.Join("\n", lines)}\n[table=5]{string.Concat(cells)}[/table]";
     }
 
-    private static string DealtWords(Dealt? dealt)
+    private static string RecordWords(CombatRecords? records)
     {
-        if (dealt == null) return "";
-        string hit = dealt.BiggestHit > 0 ? $"\nBiggest hit: {Blue(Whole(dealt.BiggestHit))}" : "";
-        return $"\nTotal damage: {Blue(Whole(dealt.Total))}{hit}";
+        if (records == null) return "";
+        string hit = records.BiggestHit > 0 ? $"  •  Biggest hit: {Blue(Whole(records.BiggestHit))}" : "";
+        return $"\nTotal damage: {Blue(Whole(records.Damage))}{hit}\n" +
+            "[gold]Best single turns[/gold]\n" +
+            $"Cards played: {Blue(Whole(records.MostCardsPlayed))}  •  Bonus energy gained: {Blue(Whole(records.MostBonusEnergy))}";
     }
 
     private static List<string> Sums(string name, Totals sums) =>
@@ -212,6 +222,17 @@ public static class StrengthMarkPatch
 
     private static string Tenth(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
 
-    private static string Name(string encounter) =>
-        ModelDb.GetByIdOrNull<EncounterModel>(ModelId.Deserialize(encounter))?.Title.GetFormattedText() ?? encounter;
+    private static string Name(string encounter)
+    {
+        if (ModelDb.GetByIdOrNull<EncounterModel>(ModelId.Deserialize(encounter)) is not { } model) return encounter;
+        string name = model.Title.GetFormattedText();
+        MapPointType point = model.RoomType switch
+        {
+            RoomType.Elite => MapPointType.Elite,
+            RoomType.Boss => MapPointType.Boss,
+            _ => MapPointType.Monster,
+        };
+        string? icon = ImageHelper.GetRoomIconPath(point, model.RoomType, point == MapPointType.Boss ? model.Id : null);
+        return string.IsNullOrEmpty(icon) || !ResourceLoader.Exists(icon) ? name : $"[img=20x20]{icon}[/img]\u00a0{name}";
+    }
 }

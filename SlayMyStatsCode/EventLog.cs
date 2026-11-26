@@ -3,8 +3,8 @@ using System.Text.Json.Nodes;
 
 namespace SlayMyStats.SlayMyStatsCode;
 
-/// <summary>One player's damage to enemies over a run.</summary>
-public sealed record Dealt(int Total, int BiggestHit);
+/// <summary>One player's damage and best single turns over a run.</summary>
+public sealed record CombatRecords(int Damage, int BiggestHit, int MostCardsPlayed, int MostBonusEnergy);
 
 /// <summary>
 /// Everything the game does, one line per event, recorded as it happens.
@@ -132,24 +132,49 @@ public static class EventLog
     /// <summary>
     /// What the player in <paramref name="slot"/> has dealt to enemies this run, counted as the site's run records
     /// count it: the total includes damage to Block and never overkill; the biggest hit is one card's, overkill
-    /// included (0 with no card hit). A pet's hits aren't the player's. Null unless the log has all
-    /// <paramref name="fights"/> fights of the run, as a total missing some would mislead.
+    /// included (0 with no card hit). A pet's hits aren't the player's. Per-turn records count resolved plays
+    /// and actual energy gains (ordinary refill uses a different event). Null with an incomplete log.
     /// </summary>
-    public static Dealt? DealtBy(int slot, int fights)
+    public static CombatRecords? RecordsFor(int slot, int fights)
     {
-        if (_broken || _truncated || Entries.Count(e => e.Kind == "fight0") < fights) return null;
-        int total = 0, biggest = 0;
+        if (_broken || _truncated) return null;
+        int damage = 0, biggest = 0, mostCards = 0, mostEnergy = 0;
+        int fightCount = 0, playerTurn = 1;
+        Dictionary<(int Fight, int Turn), (int Cards, int Energy)> turns = [];
         foreach (Entry e in Entries)
         {
             JsonObject a = e.Args;
-            if (e.Kind != "hit" || (string?)a["by"] != "P" || (int?)a["sourceSlot"] != slot ||
-                (bool?)a["enemy"] == false || (string?)a["t"] is "P" or "Osty" or "Byrdpip") continue;
-            int dealt = (int?)a["total"] ?? 0;
-            total += dealt;
-            if (a["card"] is JsonValue card && card.ToString().Length > 0)
-                biggest = Math.Max(biggest, dealt + ((int?)a["ovk"] ?? 0));
+            switch (e.Kind)
+            {
+                case "fight0":
+                    fightCount++;
+                    playerTurn = 1;
+                    break;
+                case "erese" or "turn0" or "extra" when (int?)a["targetSlot"] == slot:
+                    if ((int?)a["turn"] is > 0 and var turn) playerTurn = turn;
+                    break;
+                case "play1" when fightCount > 0 && (int?)a["sourceSlot"] == slot:
+                case "energy+" when fightCount > 0 && (int?)a["targetSlot"] == slot:
+                    // Older checkpoints have a per-player turn on plays and turn markers, but not on gains.
+                    if ((int?)a["playerTurn"] is > 0 and var stampedTurn) playerTurn = stampedTurn;
+                    var key = (e.Fight, playerTurn);
+                    var (cards, energy) = turns.GetValueOrDefault(key);
+                    if (e.Kind == "play1") cards++;
+                    else energy += (int?)a["n"] ?? 0;
+                    turns[key] = (cards, energy);
+                    mostCards = Math.Max(mostCards, cards);
+                    mostEnergy = Math.Max(mostEnergy, energy);
+                    break;
+                case "hit" when (string?)a["by"] == "P" && (int?)a["sourceSlot"] == slot &&
+                                (bool?)a["enemy"] != false && (string?)a["t"] is not ("P" or "Osty" or "Byrdpip"):
+                    int dealt = (int?)a["total"] ?? 0;
+                    damage += dealt;
+                    if (a["card"] is JsonValue card && card.ToString().Length > 0)
+                        biggest = Math.Max(biggest, dealt + ((int?)a["ovk"] ?? 0));
+                    break;
+            }
         }
-        return new Dealt(total, biggest);
+        return fightCount == 0 || fightCount < fights ? null : new CombatRecords(damage, biggest, mostCards, mostEnergy);
     }
 
     /// <summary>Called when a hook itself fails: the log stops for this run rather
