@@ -3,6 +3,7 @@
 #   .\workshop\stage.ps1 -Uploads On     subscribers upload to prod as soon as the mod loads
 #   .\workshop\stage.ps1 -Uploads Off    subscribers turn uploads on themselves (see the Workshop description)
 #
+# The .dll carries the day's stats snapshot (bundle\, downloaded from prod).
 # content\ gets the release .dll, the manifest and a SlayMyStats.config.json pointing at prod only (gamma stays
 # yours, through install.ps1). A player's own %APPDATA%\SlayTheSpire2\SlayMyStats\config.json overrides it, and
 # survives updates; this one doesn't, since Steam replaces the mod's folder each time.
@@ -43,6 +44,23 @@ if ($LASTEXITCODE -ne 0 -or "$url" -notlike "https://*") {
     throw "Couldn't read prod's ModIngestFunctionUrl from AWS. Sign in to AWS and run this again."
 }
 
+# The stats snapshot built into the .dll, so a fresh install has numbers before its first download. The site
+# serves both files gzipped; they are bundled that way.
+$statsUrl = "https://slay-my-stats.com/mod/v1/pack.json.gz"
+$bundle = Join-Path $workshop "bundle"
+if (Test-Path $bundle) { Remove-Item $bundle -Recurse -Force }
+New-Item -ItemType Directory $bundle | Out-Null
+$http = [Net.Http.HttpClient]::new()
+$pack = $http.GetByteArrayAsync($statsUrl).GetAwaiter().GetResult()
+[IO.File]::WriteAllBytes((Join-Path $bundle "pack.json.gz"), $pack)
+$json = [IO.StreamReader]::new([IO.Compression.GZipStream]::new([IO.MemoryStream]::new($pack),
+    [IO.Compression.CompressionMode]::Decompress)).ReadToEnd() | ConvertFrom-Json
+if ($json.v -ne 1) { throw "The stats snapshot isn't one this mod reads." }
+if ($json.synergy) {
+    $synergy = $http.GetByteArrayAsync([Uri]::new([Uri]$statsUrl, [string]$json.synergy)).GetAwaiter().GetResult()
+    [IO.File]::WriteAllBytes((Join-Path $bundle "synergy.json"), $synergy)
+}
+
 dotnet build "$repo\SlayMyStats.csproj" -c ExportRelease
 if ($LASTEXITCODE -ne 0) { throw "Build failed; nothing was staged." }
 $dll = (dotnet msbuild "$repo\SlayMyStats.csproj" -p:Configuration=ExportRelease -getProperty:TargetPath).Trim()
@@ -51,7 +69,7 @@ $content = Join-Path $workshop "content"
 if (Test-Path $content) { Remove-Item $content -Recurse -Force }
 New-Item -ItemType Directory $content | Out-Null
 Copy-Item $dll, "$repo\SlayMyStats.json" $content
-[ordered]@{ enabled = ($Uploads -eq "On"); endpoints = [ordered]@{ prod = "$($url.Trim().TrimEnd('/'))/mod" } } |
+[ordered]@{ enabled = ($Uploads -eq "On"); statsUrl = $statsUrl; endpoints = [ordered]@{ prod = "$($url.Trim().TrimEnd('/'))/mod" } } |
     ConvertTo-Json | Set-Content (Join-Path $content "SlayMyStats.config.json")
 
 $version = (Get-Content "$repo\SlayMyStats.json" -Raw | ConvertFrom-Json).version

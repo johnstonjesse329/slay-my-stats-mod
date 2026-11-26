@@ -42,15 +42,30 @@ public sealed class ModConfig
     public static bool DebugEnabled(string userFolder, string modFolder) =>
         Layered("debug", false, userFolder, modFolder);
 
-    private static bool Layered(string key, bool enabled, string userFolder, string modFolder)
+    /// <summary>
+    /// Where the in-game stats snapshot is downloaded from (see PackStore); null if no config file names one. The
+    /// player's file wins over the shipped one, and "enabled": false, which stops uploads, doesn't affect it.
+    /// </summary>
+    public static Uri? StatsUrl(string userFolder, string modFolder) =>
+        Uri.TryCreate(Layered("statsUrl", "", userFolder, modFolder), UriKind.Absolute, out Uri? url) &&
+        url.Scheme is "https" or "http"
+            ? url
+            : null;
+
+    /// <summary>The same leniency UploadSettings reads the player's file with.</summary>
+    private static readonly JsonDocumentOptions Lenient = new()
+        { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+
+    private static T Layered<T>(string key, T setting, string userFolder, string modFolder)
     {
         foreach (string file in new[] { Path.Combine(modFolder, FileName), Path.Combine(userFolder, UserFileName) })
         {
             try
             {
-                if (File.Exists(file) && JsonNode.Parse(File.ReadAllText(file)) is JsonObject layer &&
-                    layer[key] is JsonValue value && value.TryGetValue(out bool flag))
-                    enabled = flag;
+                if (File.Exists(file) &&
+                    JsonNode.Parse(File.ReadAllText(file), documentOptions: Lenient) is JsonObject layer &&
+                    layer[key] is JsonValue value && value.TryGetValue(out T? found) && found != null)
+                    setting = found;
             }
             catch (Exception)
             {
@@ -58,7 +73,7 @@ public sealed class ModConfig
             }
         }
 
-        return enabled;
+        return setting;
     }
 
     /// <summary>
@@ -86,7 +101,7 @@ public sealed class ModConfig
                 JsonObject? layer;
                 try
                 {
-                    layer = JsonNode.Parse(File.ReadAllText(file)) as JsonObject;
+                    layer = JsonNode.Parse(File.ReadAllText(file), documentOptions: Lenient) as JsonObject;
                     if (layer == null) throw new JsonException($"{file} isn't a JSON object");
                 }
                 catch (JsonException e) when (file == paths[1])

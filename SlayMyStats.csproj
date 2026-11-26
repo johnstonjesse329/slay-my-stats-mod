@@ -37,6 +37,15 @@
         <Compile Remove="Probe/**"/>
     </ItemGroup>
 
+    <!-- The stats snapshot a fresh install starts with, fetched by workshop/stage.ps1; a build without it just
+         waits for the download. -->
+    <ItemGroup>
+        <EmbeddedResource Include="workshop/bundle/pack.json.gz" LogicalName="pack.json.gz"
+                          Condition="Exists('workshop/bundle/pack.json.gz')"/>
+        <EmbeddedResource Include="workshop/bundle/synergy.json" LogicalName="synergy.json"
+                          Condition="Exists('workshop/bundle/synergy.json')"/>
+    </ItemGroup>
+
     <Target Name="CheckDependencyPaths">
         <Error
                 Text=" Slay the Spire 2 data not found at path '$(Sts2DataDir)'"

@@ -12,6 +12,14 @@ namespace SlayMyStats.Probe;
 ///   SlayMyStatsProbe health
 ///       Self-test of the debug health checks (RunHealth) on made-up event logs. Needs no game or Steam.
 ///
+///   SlayMyStatsProbe ruler <fixture.json>
+///       Check the mod's ruler against the site's: the fixture comes from the site repo's
+///       tools/power_curve/ruler_fixture.py (Probe/ruler_fixture.json is the committed one).
+///
+///   SlayMyStatsProbe stats [<folder> <pack address>]
+///       Self-test of the stats snapshot cache and display settings against a server on this computer. With a
+///       folder and address, loads and downloads there as the mod does at launch.
+///
 ///   SlayMyStatsProbe ticket
 ///       Ask Steam for a ticket and say whether one came back. Sends nothing anywhere.
 ///
@@ -41,6 +49,12 @@ public static class Program
         if (args is ["health"]) return Health();
 
         if (args is ["configedit"]) return ConfigEdit();
+
+        if (args is ["ruler", var fixture]) return Stats.Parity(fixture);
+
+        if (args is ["stats"]) return await Stats.SelfTest();
+
+        if (args is ["stats", var cache, var packUrl]) return await Stats.Fetch(cache, new Uri(packUrl));
 
         if (args is ["ticket"])
         {
