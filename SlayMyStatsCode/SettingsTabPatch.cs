@@ -15,7 +15,6 @@ namespace SlayMyStats.SlayMyStatsCode;
 [HarmonyPatch(typeof(NSettingsTabManager), nameof(NSettingsTabManager._Ready))]
 public static class SettingsTabPatch
 {
-    // Labels and hints are drafts until approved.
     private static readonly (string Key, string Label, string Hint)[] Rows =
     [
         ("uploadsEnabled", "Upload runs",
