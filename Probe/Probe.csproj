@@ -19,6 +19,7 @@
         <Compile Include="..\SlayMyStatsCode\CheckpointFile.cs" Link="CheckpointFile.cs"/>
         <Compile Include="..\SlayMyStatsCode\EventLog.cs" Link="EventLog.cs"/>
         <Compile Include="..\SlayMyStatsCode\RunHealth.cs" Link="RunHealth.cs"/>
+        <Compile Include="..\SlayMyStatsCode\ConfigEditor.cs" Link="ConfigEditor.cs"/>
     </ItemGroup>
 
     <!-- Outside the game nothing is loaded yet, so the probe carries its own copies of the game's Steam libraries. -->

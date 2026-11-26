@@ -40,6 +40,8 @@ public static class Program
 
         if (args is ["health"]) return Health();
 
+        if (args is ["configedit"]) return ConfigEdit();
+
         if (args is ["ticket"])
         {
             return await WithSteam(async () =>
@@ -81,6 +83,43 @@ public static class Program
                                 "       SlayMyStatsProbe upload <endpoint> <file.run>... [--as <steamid>]\n" +
                                 "       SlayMyStatsProbe backfill <endpoint> <steam folder>");
         return 2;
+    }
+
+    /// <summary>Changes keys in made-up config files and fails unless only the asked-for value moved, and a broken
+    /// file stayed as it was.</summary>
+    private static int ConfigEdit()
+    {
+        string folder = Directory.CreateTempSubdirectory("smst-configedit").FullName;
+        string path = Path.Combine(folder, "config.json");
+        bool ok = true;
+        void Case(string name, string? before, string key, bool value, string? after)
+        {
+            if (before == null) File.Delete(path);
+            else File.WriteAllText(path, before);
+            bool wrote = ConfigEditor.SetFlag(path, key, value);
+            // Decoded from the bytes, so a byte order mark shows.
+            string got = System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(path));
+            bool pass = wrote == (after != null) && got == (after ?? before);
+            ok &= pass;
+            Console.WriteLine($"{(pass ? "ok  " : "FAIL")} {name}{(pass ? "" : $": wrote={wrote} got={got}")}");
+        }
+
+        Case("change one value, keep comments and other keys",
+            "{\r\n  // mine\r\n  \"a\": true, // note\r\n  \"profiles\": [\"profile1\"],\r\n}\r\n", "a", false,
+            "{\r\n  // mine\r\n  \"a\": false, // note\r\n  \"profiles\": [\"profile1\"],\r\n}\r\n");
+        Case("add a missing key", "{\n  \"a\": true\n}\n", "b", false, "{\n  \"b\": false,\n  \"a\": true\n}\n");
+        Case("add to an empty object", "{}", "b", true, "{\n  \"b\": true}");
+        Case("leave a nested key of the same name", "{\"x\":{\"a\":true},\"a\":true}", "a", false,
+            "{\"x\":{\"a\":true},\"a\":false}");
+        Case("replace a value of the wrong kind", "{\"a\": \"yes\", \"b\": 1}", "a", true, "{\"a\": true, \"b\": 1}");
+        Case("make a missing file", null, "a", false, "{\n  \"a\": false\n}\n");
+        Case("keep a byte order mark", "﻿{\"a\":true}", "a", false, "﻿{\"a\":false}");
+        Case("never write a broken file", "{\"a\": true,, }", "a", false, null);
+        Case("never write a file that is not an object", "[1]", "a", false, null);
+
+        Directory.Delete(folder, recursive: true);
+        Console.WriteLine(ok ? "config edits OK" : "config edits WRONG");
+        return ok ? 0 : 1;
     }
 
     /// <summary>Feeds the debug self-check a clean run, then a save-and-resume that recorded a fight twice and one

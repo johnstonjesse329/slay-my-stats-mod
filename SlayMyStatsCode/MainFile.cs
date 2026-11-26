@@ -23,6 +23,16 @@ public partial class MainFile : Node
     {
         Harmony harmony = new(ModId);
 
+        // Godot only calls _Ready and the like on this assembly's node classes once it has been told about them.
+        try
+        {
+            Godot.Bridge.ScriptManagerBridge.LookupScriptsInAssembly(Assembly.GetExecutingAssembly());
+        }
+        catch (Exception e)
+        {
+            Logger.Error($"Couldn't register the mod's node classes: {e}");
+        }
+
         // Patched one class at a time: a single patch that no longer fits the game's
         // assembly (a new build renaming a parameter) must not take the rest with it.
         foreach (Type type in Assembly.GetExecutingAssembly().GetTypes())
