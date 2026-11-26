@@ -159,7 +159,22 @@ public static class Program
         string[] twice = Run(fight => { fight("a"); EventLog.Add("fight1"); fight("a"); EventLog.Add("fight1"); EventLog.Verify(true); });
         string[] open = Run(fight => { fight("a"); EventLog.Verify(true); });
 
-        bool ok = clean.Length == 0
+        // Damage dealt: this player's hits on enemies, Block included; the biggest card hit counts its overkill.
+        EventLog.Reset();
+        EventLog.NewFight();
+        EventLog.Add("fight0");
+        void Hit(int slot, int total, int over, string? card, string by = "P", string target = "Nibbit") =>
+            EventLog.Add("hit", new() { ["by"] = by, ["t"] = target, ["sourceSlot"] = slot, ["enemy"] = target != "P",
+                ["card"] = card, ["total"] = total, ["ovk"] = over });
+        Hit(0, 12, 9, "CARD.STRIKE");
+        Hit(0, 30, 0, null);                    // a Power's damage: in the total, not a card's hit
+        Hit(1, 50, 0, "CARD.STRIKE");           // the other player's
+        Hit(0, 40, 0, "CARD.STRIKE", target: "P");
+        Hit(0, 40, 0, null, by: "Osty");
+        bool dealt = EventLog.DealtBy(0, 1) == new Dealt(42, 21) && EventLog.DealtBy(0, 2) == null;
+        Console.WriteLine($"damage dealt: {EventLog.DealtBy(0, 1)}");
+
+        bool ok = dealt && clean.Length == 0
                   && twice.Length == 1 && twice[0].Contains("duplicate-fight")
                   && open.Length == 1 && open[0].Contains("fight-unclosed");
         Console.WriteLine($"clean: {clean.Length} findings; repeated fight: {string.Join("|", twice)}; unclosed: {string.Join("|", open)}");

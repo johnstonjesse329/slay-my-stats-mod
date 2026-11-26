@@ -179,11 +179,13 @@ public static class Stats
         string Said(Synergy? s) => s == null ? "none" : string.Join(" | ",
             s.Wants.Select(l => $"wants {l.Key}: {string.Join(",", l.Names)}")
                 .Concat(s.Gives.Select(l => $"gives {l.Key}: {string.Join(",", l.Names)}"))
-                .Concat(s.Archetypes));
+                .Concat(s.Archetypes.Select(a => $"{a.Key}: {string.Join(",", a.Names)}")));
         Check("synergy: wants from the deck, gives to it, with the archetype",
             Said(Links(Card("RUPTURE"), Card("BLEED"), Card("BLEED"), Card("WHIRL"))) ==
             "wants HP loss: bleed | gives Strength: whirl" &&
-            Said(Links(Card("INFLAME"), Card("WHIRL"))) == "gives Strength: whirl | Strength");
+            Said(Links(Card("INFLAME"), Card("WHIRL"))) == "gives Strength: whirl | Strength: ");
+        Check("synergy: the archetype counts every copy in the deck, the card itself too",
+            Said(Links(Card("INFLAME"), Card("INFLAME"), Card("INFLAME"))) == "Strength: inflame,inflame");
         Check("synergy: an item never links to itself", Links(Card("RUPTURE"), Card("RUPTURE")) == null);
         Check("synergy: a relic gives, and has no archetype",
             Said(Links(vajra, Card("WHIRL"))) == "gives Strength: whirl");

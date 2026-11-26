@@ -11,6 +11,9 @@ public sealed record FightLine(string Encounter, int Turns, double WinTurns, dou
 public sealed record Strength(ActReading Current, IReadOnlyList<FightLine> Fights, IReadOnlyList<ActReading> Earlier,
     RunReading? Run = null)
 {
+    /// <summary>The local player's damage dealt; null when the run's event log can't say.</summary>
+    public Dealt? Dealt { get; init; }
+
     /// <summary>The reading of <paramref name="act"/>, or until it has a fight, of the act before. Null with no
     /// fight to read.</summary>
     /// <param name="player">Whose damage counts in a party: their place in the run's players.</param>

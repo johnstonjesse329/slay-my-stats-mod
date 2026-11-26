@@ -11,17 +11,18 @@ public sealed record SynergyLink(string Key, IReadOnlyList<string> Names);
 /// <summary>
 /// How a card or relic connects to what the player owns, read from the site's synergy file the way its deck view
 /// reads it: what the item wants that the deck and relics supply, what it gives that they use, and for a card the
-/// archetypes it belongs to. No Godot or game code.
+/// archetypes it belongs to, each with the deck's cards of that archetype (every copy, the card itself too). No
+/// Godot or game code.
 /// </summary>
 public sealed record Synergy(
-    IReadOnlyList<SynergyLink> Wants, IReadOnlyList<SynergyLink> Gives, IReadOnlyList<string> Archetypes)
+    IReadOnlyList<SynergyLink> Wants, IReadOnlyList<SynergyLink> Gives, IReadOnlyList<SynergyLink> Archetypes)
 {
     // A synergy row is [what the item makes, what it needs].
     private const int Makes = 0, Needs = 1;
 
     /// <summary>Null when there is no connection and no archetype to show.</summary>
     /// <param name="character">The player's character, as "IRONCLAD".</param>
-    /// <param name="owned">The player's deck and relics. The item itself never counts.</param>
+    /// <param name="owned">The player's deck and relics. The item itself never counts toward a link.</param>
     public static Synergy? Of(JsonObject data, string character, SynergyItem item, IReadOnlyList<SynergyItem> owned)
     {
         if (data["synergy"] is not { } table) return null;
@@ -41,9 +42,15 @@ public sealed record Synergy(
 
         JsonArray? own = Row(table, item);
         List<SynergyLink> wants = Links(own, Needs, Makes), gives = Links(own, Makes, Needs);
-        List<string> archetypes = !item.Relic && data["archetypes"]?[character] is JsonObject all
-            ? all.Where(a => Strings(a.Value?["cards"]).Contains(item.Id)).Select(a => a.Key).ToList()
-            : [];
+        List<SynergyLink> archetypes = [];
+        if (!item.Relic && data["archetypes"]?[character] is JsonObject all)
+            foreach (var (name, archetype) in all)
+            {
+                HashSet<string> cards = Strings(archetype?["cards"]).ToHashSet();
+                if (!cards.Contains(item.Id)) continue;
+                archetypes.Add(new SynergyLink(name,
+                    owned.Where(o => !o.Relic && cards.Contains(o.Id)).Select(o => o.Name).ToList()));
+            }
         return wants.Count + gives.Count + archetypes.Count == 0 ? null : new Synergy(wants, gives, archetypes);
     }
 
