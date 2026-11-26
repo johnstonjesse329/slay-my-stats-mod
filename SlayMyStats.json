@@ -1,7 +1,7 @@
 {
   "id": "SlayMyStats",
   "name": "Slay My Stats",
-  "author": "JesseJ",
+  "author": "splitswigs",
   "description": "Uploads each finished run to slay-my-stats.",
   "version": "v0.0.6",
   "min_game_version": "0.107.0",
