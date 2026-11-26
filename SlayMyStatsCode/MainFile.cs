@@ -90,7 +90,7 @@ public partial class MainFile : Node
     }
 
     /// <summary>The version in the manifest, so it is written down in one place.</summary>
-    private static string Version(string modDir)
+    internal static string Version(string modDir)
     {
         try
         {
