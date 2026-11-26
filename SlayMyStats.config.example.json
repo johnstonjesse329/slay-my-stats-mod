@@ -1,5 +1,6 @@
 {
   "enabled": true,
+  "statsUrl": "https://slay-my-stats.com/mod/v1/pack.json.gz",
   "endpoints": {
     "prod": "https://REPLACE-ME.lambda-url.us-west-2.on.aws/mod",
     "gamma": "https://REPLACE-ME-TOO.lambda-url.us-west-2.on.aws/mod"

@@ -20,6 +20,10 @@
         <Compile Include="..\SlayMyStatsCode\EventLog.cs" Link="EventLog.cs"/>
         <Compile Include="..\SlayMyStatsCode\RunHealth.cs" Link="RunHealth.cs"/>
         <Compile Include="..\SlayMyStatsCode\ConfigEditor.cs" Link="ConfigEditor.cs"/>
+        <Compile Include="..\SlayMyStatsCode\DisplaySettings.cs" Link="DisplaySettings.cs"/>
+        <Compile Include="..\SlayMyStatsCode\PackData.cs" Link="PackData.cs"/>
+        <Compile Include="..\SlayMyStatsCode\PackStore.cs" Link="PackStore.cs"/>
+        <Compile Include="..\SlayMyStatsCode\Ruler.cs" Link="Ruler.cs"/>
     </ItemGroup>
 
     <!-- Outside the game nothing is loaded yet, so the probe carries its own copies of the game's Steam libraries. -->

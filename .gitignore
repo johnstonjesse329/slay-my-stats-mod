@@ -4,6 +4,7 @@ obj/
 SlayMyStats.config.json
 # Built by workshop/stage.ps1; the uploader is fetched there too.
 /workshop/content/
+/workshop/bundle/
 /workshop/.uploader/
 mod-uploader.log
 __pycache__/

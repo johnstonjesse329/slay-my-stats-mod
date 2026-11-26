@@ -89,7 +89,43 @@ public partial class MainFile : Node
             Logger.Error($"Uploads are off: {e}");
         }
 
+        // On its own, so trouble here leaves uploads alone, and the other way round.
+        try
+        {
+            StartStats();
+        }
+        catch (Exception e)
+        {
+            Logger.Error($"In-game stats are off: {e}");
+        }
+
         Logger.Info($"Slay My Stats loaded. Uploads are {(Uploaders.Count == 0 ? "off" : $"on, to {string.Join(" and ", sites)}")}.");
+    }
+
+    /// <summary>Load the snapshot on this computer and, if any stats are switched on, ask the site for a newer
+    /// one in the background.</summary>
+    private static void StartStats()
+    {
+        string modDir = ModDir();
+        string userDir = Path.Combine(OS.GetUserDataDir(), ModId);
+        Action<string> log = message => Logger.Info(message);
+        DisplaySettings Settings() => DisplaySettings.Read(userDir, log);
+
+        PackStore store = new(Path.Combine(userDir, "cache"), Bundled, log);
+        store.Load();
+        LiveRun.Watch(store, Settings);
+        if (Settings().Any && ModConfig.StatsUrl(userDir, modDir) is { } url)
+            _ = Task.Run(() => store.Refresh(url, new System.Net.Http.HttpClient()));
+    }
+
+    /// <summary>A file built into the .dll by workshop/stage.ps1, or null.</summary>
+    private static byte[]? Bundled(string name)
+    {
+        using Stream? from = Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
+        if (from == null) return null;
+        MemoryStream into = new();
+        from.CopyTo(into);
+        return into.ToArray();
     }
 
     /// <summary>The folder this mod was installed to: where its .dll, manifest and config sit.</summary>
