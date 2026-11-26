@@ -11,6 +11,8 @@ Subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedet
 
 If the Workshop isn't working, install the mod by hand:
 
+The quick way: download `SlayMyStats-v0.0.6.zip` from the [latest release](https://github.com/johnstonjesse329/slay-my-stats-mod/releases/latest), extract it, close the game and double-click `Install.cmd`. Or do it yourself:
+
 1. Close the game.
 2. Download `SlayMyStats-v0.0.6.zip` from the [latest release](https://github.com/johnstonjesse329/slay-my-stats-mod/releases/latest) and extract it.
 3. In Steam, right-click Slay the Spire 2, then choose Manage > Browse local files.
