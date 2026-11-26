@@ -147,7 +147,8 @@ public static class StrengthMarkPatch
     {
         Control tip = tips.GetNode("textHoverTipContainer").GetChild<Control>(0);
         RichTextLabel text = tip.GetNode<RichTextLabel>("%Description");
-        text.AddThemeConstantOverride("table_h_separation", 18);
+        text.AddThemeConstantOverride("table_h_separation", 12);
+        text.AutowrapMode = TextServer.AutowrapMode.Word;
         text.CustomMinimumSize = new Vector2(TipTextWidth, 0);
         tip.ResetSize();
     }
@@ -156,7 +157,7 @@ public static class StrengthMarkPatch
     {
         if (strength.Run is { } run) return RunWords(strength, run);
         ActReading act = strength.Current;
-        List<string> cells = Row("Fight", "Dmg taken", "Avg win", "Turns", "Avg win");
+        List<string> cells = Header("Fight");
         foreach (FightLine f in strength.Fights)
         {
             cells.AddRange(Row(Name(f.Encounter), Blue(Whole(f.Taken)), Whole(f.WinTaken),
@@ -173,7 +174,7 @@ public static class StrengthMarkPatch
     {
         List<ActReading> acts = [.. strength.Earlier, strength.Current];
         List<string> lines = [$"Run: {(run.Op ? "[green]OP[/green]" : Word(run.Verdict))}"];
-        List<string> cells = Row("Act", "Dmg taken", "Avg win", "Turns", "Avg win");
+        List<string> cells = Header("Act");
         foreach (ActReading act in acts)
         {
             lines.Add($"Act {act.Act + 1}: {Word(act.Verdict)}");
@@ -193,9 +194,13 @@ public static class StrengthMarkPatch
     private static List<string> Sums(string name, Totals sums) =>
         Row(name, Blue(Whole(sums.Taken)), Whole(sums.WinTaken), Blue(Whole(sums.Turns)), Tenth(sums.WinTurns));
 
-    /// <summary>One table row: the name on the left, the numbers on the right.</summary>
+    // Keep the metric headings on one line so they don't compete with fight names for expansion.
+    private static List<string> Header(string name) =>
+        Row(name, "Dmg\u00a0taken", "Avg\u00a0win", "Turns", "Avg\u00a0win");
+
+    /// <summary>Give the name column most of the extra width and keep the numbers right-aligned.</summary>
     private static List<string> Row(string name, params string[] numbers) =>
-        [$"[cell]{name}[/cell]", .. numbers.Select(n => $"[cell][right]{n}[/right][/cell]")];
+        [$"[cell=4]{name}[/cell]", .. numbers.Select(n => $"[cell][right]{n}[/right][/cell]")];
 
     private static string Blue(string value) => $"[blue]{value}[/blue]";
 
