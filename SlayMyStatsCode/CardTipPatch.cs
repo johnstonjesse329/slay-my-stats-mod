@@ -76,12 +76,18 @@ public static class CardTipPatch
             .. synergy.Wants.Select(l => $"Wants {l.Key} from: {Names(l.Names)}"),
             .. synergy.Gives.Select(l => $"Gives {l.Key} to: {Names(l.Names)}"),
         ];
-        if (synergy.Archetypes.Count > 0)
-        {
-            string heading = synergy.Archetypes.Count == 1 ? "Archetype" : "Archetypes";
-            lines.Add($"{heading}: {string.Join(", ", synergy.Archetypes)}");
-        }
+        lines.AddRange(synergy.Archetypes.Select(InDeck));
         return string.Join("\n", lines);
+    }
+
+    /// <summary>"Shiv cards in your deck: 3 (Accuracy, Blade Dance x2)".</summary>
+    private static string InDeck(SynergyLink archetype)
+    {
+        string line = $"{archetype.Key} cards in your deck: ";
+        if (archetype.Names.Count == 0) return line + "none";
+        List<string> names = archetype.Names.GroupBy(n => n)
+            .Select(g => g.Count() == 1 ? g.Key : $"{g.Key} x{g.Count()}").ToList();
+        return $"{line}{archetype.Names.Count} ({Names(names)})";
     }
 
     private static string Names(IReadOnlyList<string> names) => names.Count <= MaxNames
