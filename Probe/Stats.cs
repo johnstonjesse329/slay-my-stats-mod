@@ -191,6 +191,11 @@ public static class Stats
             Links(Card("TWIN"), vajra) == null && Said(Links(Card("TWIN", true), vajra)) == "wants Strength: vajra");
         Check("synergy: starters linking only each other say nothing", Links(Card("BASH"), Card("STRIKE")) == null);
 
+        Check("strength: a won run is read whole",
+            Strength.Of(Played(3), ruler, 0, 0, won: true) is { Run: { Verdict: Ruler.Ahead, Op: false } });
+        Check("strength: a won run needs the site's number of fights in an act",
+            Strength.Of(Played(2), ruler, 0, 0, won: true) == null);
+
         string root = Directory.CreateTempSubdirectory("smst-stats").FullName;
         List<string> log = [];
         using FakeSite site = new();

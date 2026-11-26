@@ -35,8 +35,10 @@ public static class LiveRun
     {
         if (_settings?.Invoke().RunStrength != true || Pack?.Data.Ruler is not { } demand || Record() is not { } run)
             return null;
-        return SlayMyStatsCode.Strength.Of(run, demand, RunManager.Instance.DebugOnlyGetState()!.CurrentActIndex,
-            LocalPlayer());
+        RunState state = RunManager.Instance.DebugOnlyGetState()!;
+        // The room after the last boss: the run is won.
+        return SlayMyStatsCode.Strength.Of(run, demand, state.CurrentActIndex, LocalPlayer(),
+            won: state.CurrentRoom?.IsVictoryRoom == true);
     }
 
     /// <summary>How a card or relic connects to the local player's deck and relics; null outside a run or with
