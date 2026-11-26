@@ -102,6 +102,10 @@ Switch it off in the game's mod list, or unsubscribe.
 Needs the game and the [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0). Once per clone,
 `git config core.hooksPath githooks` so commits refuse private values (`tools/check_secrets.py`).
 
+Every pushed mod change has its own version: push with `python tools/version.py push <branch>`, which
+numbers a test build (`v0.0.7-test.1`, one counter for all branches), tags it and pushes both. Add
+`--release` for a release. A plain `git push` of an unversioned mod change is refused.
+
 ```
 .\install.ps1                          # build, point it at the site, copy into <game>\mods\SlayMyStats\
 python tools/check_patches.py          # after a game update: fails if a patch no longer fits the game
@@ -109,7 +113,7 @@ python tools/check_patches.py          # after a game update: fails if a patch n
 .\workshop\.uploader\ModUploader.exe upload -w workshop
 ```
 
-Each release: `check_patches.py`, bump `version` in `SlayMyStats.json`, set `changeNote` in
+Each release: `check_patches.py`, push with `version.py push <branch> --release`, set `changeNote` in
 `workshop\workshop.json`, stage, upload. Set visibility and branches in `workshop.json`, not on the Workshop
 page: every upload sends them again.
 
