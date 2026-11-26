@@ -25,6 +25,7 @@
         <Compile Include="..\SlayMyStatsCode\PackStore.cs" Link="PackStore.cs"/>
         <Compile Include="..\SlayMyStatsCode\Ruler.cs" Link="Ruler.cs"/>
         <Compile Include="..\SlayMyStatsCode\Rates.cs" Link="Rates.cs"/>
+        <Compile Include="..\SlayMyStatsCode\EventRates.cs" Link="EventRates.cs"/>
         <Compile Include="..\SlayMyStatsCode\Strength.cs" Link="Strength.cs"/>
         <Compile Include="..\SlayMyStatsCode\Synergy.cs" Link="Synergy.cs"/>
     </ItemGroup>

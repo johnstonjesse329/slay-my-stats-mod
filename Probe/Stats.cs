@@ -140,6 +140,19 @@ public static class Stats
         Check("rates: an unknown id or missing lane shows nothing",
             Rates.Of(rated, false, "Z", false) == null && Rates.Of(rated, true, "A", false) == null);
 
+        PackData chosen = JsonSerializer.Deserialize<PackData>("""
+            {"v":1,"lanes":{"solo":{"events":{"EVENT.A":{"v":80,"o":{"X":[20,9],"Y":[19,19]}},
+                                              "EVENT.B":{"o":{"X":[40,10]}}}}}}
+            """)!;
+        string Key(string option, string page = "INITIAL") => $"A.pages.{page}.options.{option}.title";
+        EventRates? Choice(string id, string key, bool multi = false) => EventRates.Of(chosen, multi, id, key);
+        Check("events: pick and win rate", Choice("EVENT.A", Key("X")) == new EventRates(25, 45, 20));
+        Check("events: no visit count, no pick rate", Choice("EVENT.B", Key("X")) == new EventRates(null, 25, 40));
+        Check("events: under 20 takes shows nothing", Choice("EVENT.A", Key("Y")) == null);
+        Check("events: a later page, other key, unknown event or missing lane shows nothing",
+            Choice("EVENT.A", Key("X", "ALL")) == null && Choice("EVENT.A", "PROCEED") == null &&
+            Choice("EVENT.Z", Key("X")) == null && Choice("EVENT.A", Key("X"), true) == null);
+
         RulerData ruler = new()
         {
             Encounters = new() { ["E"] = new() { Tiers = [new Line { Turns = 4, Taken = 10 }], Pool = [40] } },
@@ -311,12 +324,12 @@ public static class Stats
         string user = Path.Combine(root, "user");
         string config = Path.Combine(user, "config.json");
         DisplaySettings Read() => DisplaySettings.Read(user, log.Add);
-        Check("new config: everything on", Read() == new DisplaySettings(true, true, true) &&
+        Check("new config: everything on", Read() == new DisplaySettings(true, true, true, true) &&
                                            File.ReadAllText(config).Contains("\"showSynergyHints\": true"));
         File.WriteAllText(config, "{\"uploadsEnabled\": true}");
-        Check("a config from before these keys: everything on", Read() == new DisplaySettings(true, true, true));
+        Check("a config from before these keys: everything on", Read() == new DisplaySettings(true, true, true, true));
         File.WriteAllText(config, "{// mine\n\"uploadsEnabled\": false, \"showRunStrength\": false,}");
-        Check("one switched off, uploads off", Read() == new DisplaySettings(true, false, true));
+        Check("one switched off, uploads off", Read() == new DisplaySettings(true, false, true, true));
         File.WriteAllText(config, "{\"showCardStats\": \"no\"}");
         Check("wrong kind of value: all off, with the notice", !Read().Any && UploadSettings.Notice != null);
         File.WriteAllText(config, "{,,");

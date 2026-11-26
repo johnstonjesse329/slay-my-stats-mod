@@ -24,7 +24,8 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// the game's own tips, during a run, wherever one is chosen or looked through: rewards, shop, relic choices and
 /// card grids such as the deck view, and on owned relics in the top bar and the relic inspect screen. Cards in
 /// hand are left alone. With no run, the compendium's card library, relic collection and relic inspect screen
-/// get the rates alone, solo and multiplayer both.
+/// get the rates alone, solo and multiplayer both. Event options get how often they're taken and the win rate
+/// after taking them.
 /// </summary>
 [HarmonyPatch(typeof(NHoverTipSet), "Init")]
 public static class CardTipPatch
@@ -42,21 +43,29 @@ public static class CardTipPatch
                     hoverTips = hoverTips.Append(ModTip.Create("Slay My Stats", words)).ToList();
                 return;
             }
-            if (!RunManager.Instance.IsInProgress || Offered(owner) is not { } model) return;
+            if (!RunManager.Instance.IsInProgress) return;
+            AbstractModel? model = Offered(owner);
+            NEventOptionButton? button = owner as NEventOptionButton;
+            if (model == null && button == null) return;
             if (LiveRun.Settings is not { } settings || LiveRun.Pack is not { } pack) return;
             List<string> blocks = [];
             bool multiplayer = RunManager.Instance.DebugOnlyGetState()?.Players.Count > 1;
-            if (settings.CardStats &&
+            // An event choice's own rates stand in for those of the relic it gives.
+            if (settings.EventStats && button?.Option is { } option &&
+                EventRates.Of(pack.Data, multiplayer, button.Event.Id.ToString(), option.HistoryName.LocEntryKey)
+                    is { } choice)
+                blocks.Add(Words(choice));
+            else if (model != null && settings.CardStats &&
                 Rates.Of(pack.Data, multiplayer, model.Id.ToString(), model is RelicModel) is { } rates)
                 blocks.Add(Words(rates));
-            if (settings.SynergyHints && pack.Synergy is { } table && LiveRun.Synergy(table, model) is { } synergy)
+            if (model != null && settings.SynergyHints && pack.Synergy is { } table && LiveRun.Synergy(table, model) is { } synergy)
                 blocks.Add(Words(synergy));
             if (blocks.Count == 0) return;
             hoverTips = hoverTips.Append(ModTip.Create("Slay My Stats", string.Join("\n\n", blocks))).ToList();
         }
         catch (Exception e)
         {
-            MainFile.Logger.Error($"Stats: couldn't add a card or relic tip: {e}");
+            MainFile.Logger.Error($"Stats: couldn't add a stats tip: {e}");
         }
     }
 
@@ -119,6 +128,12 @@ public static class CardTipPatch
         if (rates.Win is { } win) lines.Add($"Win rate: [blue]{win}%[/blue]");
         if (rates.Pick is { } pick) lines.Add($"Pick rate: [blue]{pick}%[/blue]");
         return string.Join("\n", lines);
+    }
+
+    private static string Words(EventRates rates)
+    {
+        string win = $"Win rate: [blue]{rates.Win}%[/blue] ({rates.Taken} taken)";
+        return rates.Pick is { } pick ? $"Pick rate: [blue]{pick}%[/blue]\n{win}" : win;
     }
 
     private static string Words(Synergy synergy)

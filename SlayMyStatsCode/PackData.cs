@@ -66,6 +66,18 @@ public sealed class Lane
     [JsonPropertyName("cards")] public Dictionary<string, int[]> Cards { get; init; } = [];
     [JsonPropertyName("relics")] public Dictionary<string, int[]> Relics { get; init; } = [];
     [JsonPropertyName("picks")] public Dictionary<string, CharacterPicks> Picks { get; init; } = [];
+
+    /// <summary>First-page event choices by event id, all characters together.</summary>
+    [JsonPropertyName("events")] public Dictionary<string, EventChoices> Events { get; init; } = [];
+}
+
+public sealed class EventChoices
+{
+    /// <summary>Visits to the event. Missing when some options aren't offered on every visit.</summary>
+    [JsonPropertyName("v")] public int? Visits { get; init; }
+
+    /// <summary>[times taken, wins] by option.</summary>
+    [JsonPropertyName("o")] public Dictionary<string, int[]> Options { get; init; } = [];
 }
 
 /// <summary>[picks, wins when picked, offers, wins when skipped] by id.</summary>

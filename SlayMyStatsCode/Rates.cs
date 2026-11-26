@@ -30,6 +30,6 @@ public sealed record Rates(int? Win, int? Pick)
         return win == null && pick == null ? null : new Rates(win, pick);
     }
 
-    private static int? Percent(int part, int whole) =>
+    internal static int? Percent(int part, int whole) =>
         whole < MinRuns ? null : (int)Math.Round(100.0 * part / whole, MidpointRounding.AwayFromZero);
 }

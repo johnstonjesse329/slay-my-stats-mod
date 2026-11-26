@@ -25,6 +25,8 @@ public static class SettingsTabPatch
             "When on, projects your current strength by floor vs winning runs on average."),
         ("showSynergyHints", "Synergy hints",
             "When on, card and relic tips show what they give your deck or want from it."),
+        ("showEventStats", "Event stats",
+            "When on, event choice tips show pick rates and win rates."),
     ];
 
     [HarmonyPostfix]
