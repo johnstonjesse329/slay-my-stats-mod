@@ -13,6 +13,7 @@ namespace SlayMyStats.SlayMyStatsCode;
 /// <summary>
 /// The run strength mark in the top bar, after the floor and boss icons: the site's up arrow, bullseye or down
 /// arrow for the latest act fought in, with a tip giving the numbers behind it. Hidden before the first fight.
+/// Once the run is won both show the whole run, with a double up arrow for OP.
 /// </summary>
 [HarmonyPatch(typeof(NTopBar), nameof(NTopBar.Initialize))]
 public static class StrengthMarkPatch
@@ -65,7 +66,8 @@ public static class StrengthMarkPatch
 
         mark.Draw += () =>
         {
-            if (strength != null) Sign(mark, strength.Current.Verdict);
+            if (strength != null)
+                Sign(mark, strength.Run?.Verdict ?? strength.Current.Verdict, strength.Run?.Op == true);
         };
         mark.MouseEntered += () =>
         {
@@ -104,9 +106,16 @@ public static class StrengthMarkPatch
     }
 
     /// <summary>The site's mark: a coloured disc with an up arrow, a bullseye or a down arrow cut into it.</summary>
-    private static void Sign(Control mark, string verdict)
+    private static void Sign(Control mark, string verdict, bool op)
     {
         Vector2 middle = mark.Size / 2;
+        if (op)
+        {
+            mark.DrawCircle(middle, Radius, Win, antialiased: true);
+            Arrow(mark, middle + new Vector2(-0.40f * Radius, 0), 0.70f, 1);
+            Arrow(mark, middle + new Vector2(0.40f * Radius, 0), 0.70f, 1);
+            return;
+        }
         Color disc = verdict == Ruler.Ahead ? Win : verdict == Ruler.Behind ? Loss : Mid;
         mark.DrawCircle(middle, Radius, disc, antialiased: true);
         if (verdict == Ruler.Meeting)
@@ -116,12 +125,18 @@ public static class StrengthMarkPatch
             mark.DrawCircle(middle, Radius * 0.18f, Ink, antialiased: true);
             return;
         }
-        float up = verdict == Ruler.Ahead ? 1 : -1;
+        Arrow(mark, middle, 1, verdict == Ruler.Ahead ? 1 : -1);
+    }
+
+    /// <param name="up">1 points up, -1 down.</param>
+    private static void Arrow(Control mark, Vector2 middle, float scale, float up)
+    {
+        float size = Radius * scale;
         Vector2[] arrow =
         [
-            middle + new Vector2(0, -0.52f * Radius * up),
-            middle + new Vector2(0.56f * Radius, 0.40f * Radius * up),
-            middle + new Vector2(-0.56f * Radius, 0.40f * Radius * up),
+            middle + new Vector2(0, -0.52f * size * up),
+            middle + new Vector2(0.56f * size, 0.40f * size * up),
+            middle + new Vector2(-0.56f * size, 0.40f * size * up),
         ];
         mark.DrawColoredPolygon(arrow, Ink);
         mark.DrawPolyline([.. arrow, arrow[0]], Ink, 1, antialiased: true);
@@ -139,6 +154,7 @@ public static class StrengthMarkPatch
 
     private static string Words(Strength strength)
     {
+        if (strength.Run is { } run) return RunWords(strength, run);
         ActReading act = strength.Current;
         List<string> cells = Row("Fight", "Damage", "Avg win", "Turns", "Avg win");
         foreach (FightLine f in strength.Fights)
@@ -146,12 +162,29 @@ public static class StrengthMarkPatch
             cells.AddRange(Row(Name(f.Encounter), Blue(Whole(f.Taken)), Whole(f.WinTaken),
                 Blue(f.Turns.ToString(CultureInfo.InvariantCulture)), Tenth(f.WinTurns)));
         }
-        cells.AddRange(Row("[b]Act total[/b]", Blue(Whole(act.Taken)), Whole(act.WinTaken),
-            Blue(Whole(act.Turns)), Tenth(act.WinTurns)));
+        cells.AddRange(Sums("[b]Act total[/b]", act));
 
         IEnumerable<string> acts = strength.Earlier.Append(act).Select(a => $"Act {a.Act + 1}: {Word(a.Verdict)}");
         return $"{string.Join("\n", acts)}\n[table=5]{string.Concat(cells)}[/table]";
     }
+
+    /// <summary>The tip of a won run: the run and each act, then their damage and turns.</summary>
+    private static string RunWords(Strength strength, RunReading run)
+    {
+        List<ActReading> acts = [.. strength.Earlier, strength.Current];
+        List<string> lines = [$"Run: {(run.Op ? "[green]OP[/green]" : Word(run.Verdict))}"];
+        List<string> cells = Row("Act", "Damage", "Avg win", "Turns", "Avg win");
+        foreach (ActReading act in acts)
+        {
+            lines.Add($"Act {act.Act + 1}: {Word(act.Verdict)}");
+            cells.AddRange(Sums($"Act {act.Act + 1}", act));
+        }
+        cells.AddRange(Sums("[b]Run total[/b]", run.Totals));
+        return $"{string.Join("\n", lines)}\n[table=5]{string.Concat(cells)}[/table]";
+    }
+
+    private static List<string> Sums(string name, Totals sums) =>
+        Row(name, Blue(Whole(sums.Taken)), Whole(sums.WinTaken), Blue(Whole(sums.Turns)), Tenth(sums.WinTurns));
 
     /// <summary>One table row: the name on the left, the numbers on the right.</summary>
     private static List<string> Row(string name, params string[] numbers) =>
