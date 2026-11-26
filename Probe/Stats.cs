@@ -139,6 +139,27 @@ public static class Stats
         Check("rates: an unknown id or missing lane shows nothing",
             Rates.Of(rated, false, "Z", false) == null && Rates.Of(rated, true, "A", false) == null);
 
+        RulerData ruler = new()
+        {
+            Encounters = new() { ["E"] = new() { Tiers = [new Line { Turns = 4, Taken = 10 }], Pool = [40] } },
+            Cuts = new() { Acts = [], Run = new() { Guard = [0.8, 1.2], Pace = [0.8, 1.2] } },
+        };
+        RunRecord Played(int fights) => new()
+        {
+            InProgress = true,
+            Players = [new RunPlayer()],
+            Acts = [Enumerable.Repeat(new RunPoint
+            {
+                Type = "monster",
+                Stats = [new PointStats { DamageTaken = 2 }],
+                Rooms = [new RunRoom { ModelId = "E", MonsterIds = ["M"], Turns = 4 }],
+            }, fights).ToList()],
+        };
+        Check("strength: two fights don't read an act", Strength.Of(Played(2), ruler, 0, 0) == null);
+        Check("strength: three do, with a line for each",
+            Strength.Of(Played(3), ruler, 0, 0) is { Current.Verdict: Ruler.Ahead, Fights.Count: 3, Earlier.Count: 0 });
+        Check("strength: an act not yet fought in shows nothing", Strength.Of(Played(3), ruler, 1, 0) == null);
+
         string root = Directory.CreateTempSubdirectory("smst-stats").FullName;
         List<string> log = [];
         using FakeSite site = new();
