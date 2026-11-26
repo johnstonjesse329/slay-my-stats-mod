@@ -28,7 +28,7 @@ public static class LiveRun
     public static void ChangedSettings() => SettingsChanged?.Invoke();
 
     /// <summary>What the run strength mark has to show now; null if it's switched off, there is no run or
-    /// snapshot, or the act can't be read yet.</summary>
+    /// snapshot, or no fight to read yet.</summary>
     public static Strength? Strength()
     {
         if (_settings?.Invoke().RunStrength != true || Pack?.Data.Ruler is not { } demand || Record() is not { } run)

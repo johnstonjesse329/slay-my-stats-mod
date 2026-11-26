@@ -155,10 +155,13 @@ public static class Stats
                 Rooms = [new RunRoom { ModelId = "E", MonsterIds = ["M"], Turns = 4 }],
             }, fights).ToList()],
         };
-        Check("strength: two fights don't read an act", Strength.Of(Played(2), ruler, 0, 0) == null);
+        Check("strength: no fight, no reading", Strength.Of(Played(0), ruler, 0, 0) == null);
+        Check("strength: one fight reads the act",
+            Strength.Of(Played(1), ruler, 0, 0) is { Current.Act: 0, Fights.Count: 1 });
         Check("strength: three do, with a line for each",
             Strength.Of(Played(3), ruler, 0, 0) is { Current.Verdict: Ruler.Ahead, Fights.Count: 3, Earlier.Count: 0 });
-        Check("strength: an act not yet fought in shows nothing", Strength.Of(Played(3), ruler, 1, 0) == null);
+        Check("strength: a new act keeps the last reading until its first fight",
+            Strength.Of(Played(3), ruler, 1, 0) is { Current.Act: 0, Earlier.Count: 0 });
 
         string root = Directory.CreateTempSubdirectory("smst-stats").FullName;
         List<string> log = [];
