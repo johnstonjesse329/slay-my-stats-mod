@@ -8,7 +8,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
 namespace SlayMyStats.SlayMyStatsCode;
 
 /// <summary>
-/// SPIKE: adds a "Slay My Stats" tab to the game's Settings screen, built from the game's own tab, label, divider
+/// Adds a "Slay My Stats" tab to the game's Settings screen, built from the game's own tab, label, divider
 /// and tickbox pieces. Each tickbox shows and writes one key of the player's config.json; nothing here touches the
 /// game's preferences.
 /// </summary>
