@@ -3,7 +3,7 @@
   "name": "Slay My Stats",
   "author": "splitswigs",
   "description": "Uploads each finished run to slay-my-stats.",
-  "version": "v0.0.7-test.1",
+  "version": "v0.0.7-test.2",
   "min_game_version": "0.107.0",
   "has_pck": false,
   "has_dll": true,
