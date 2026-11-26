@@ -29,6 +29,8 @@ public static class CheckpointFile
         JsonObject? telemetry = own
             ? ReadLog(log, (bool?)meta?["truncated"] ?? false)
             : meta?["telemetry"]?.DeepClone() as JsonObject;
+        // Debug only: what the health checks had found, kept in the small file.
+        if (telemetry != null && meta?["health"] is JsonObject health) telemetry["health"] = health.DeepClone();
         return new Saved(meta?["maps"]?.DeepClone() as JsonArray, telemetry, (string?)meta?["lastFight"],
             meta?["mods"]?.DeepClone() as JsonArray, own);
     }

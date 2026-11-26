@@ -32,15 +32,24 @@ public sealed class ModConfig
     /// Whether to lift a modded profile to the standard one's progress (see ProgressCarryPatch). On unless a
     /// config file sets "carry_progress": false; the player's file wins over the shipped one.
     /// </summary>
-    public static bool CarryProgressEnabled(string userFolder, string modFolder)
+    public static bool CarryProgressEnabled(string userFolder, string modFolder) =>
+        Layered("carry_progress", true, userFolder, modFolder);
+
+    /// <summary>
+    /// For the author and testers: "debug": true turns on RunHealth's checks and sends their findings with each
+    /// run. Off unless set, and left out of the generated config so players don't see it.
+    /// </summary>
+    public static bool DebugEnabled(string userFolder, string modFolder) =>
+        Layered("debug", false, userFolder, modFolder);
+
+    private static bool Layered(string key, bool enabled, string userFolder, string modFolder)
     {
-        bool enabled = true;
         foreach (string file in new[] { Path.Combine(modFolder, FileName), Path.Combine(userFolder, UserFileName) })
         {
             try
             {
                 if (File.Exists(file) && JsonNode.Parse(File.ReadAllText(file)) is JsonObject layer &&
-                    layer["carry_progress"] is JsonValue value && value.TryGetValue(out bool flag))
+                    layer[key] is JsonValue value && value.TryGetValue(out bool flag))
                     enabled = flag;
             }
             catch (Exception)

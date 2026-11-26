@@ -36,9 +36,11 @@ public static class EventHooks
     internal static void Safe(Action body)
     {
         if (_broken) return;
+        long began = RunHealth.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         try
         {
             body();
+            if (RunHealth.Enabled) RunHealth.Hook(System.Diagnostics.Stopwatch.GetTimestamp() - began);
         }
         catch (Exception e)
         {
@@ -90,7 +92,7 @@ public static class EventHooks
 
     public static void FightStart(IRunState runState, ICombatState state) => Safe(() =>
     {
-        RunCheckpoint.FightStarted(runState, state.Encounter?.Id?.ToString() ?? "");
+        string? fightKey = RunCheckpoint.FightStarted(runState, state.Encounter?.Id?.ToString() ?? "");
         EventLog.NewFight();
         // Use the run roster order, which the save also uses for players and player_stats.
         // The event needs a seat number only, so it carries no online account identifier.
@@ -101,7 +103,7 @@ public static class EventHooks
             if (player.Creature != null) DamageSlots[player.Creature] = slot;
             slot++;
         }
-        EventLog.Add("fight0", new JsonObject
+        JsonObject start = new()
         {
             ["enc"] = state.Encounter?.Id?.ToString() ?? "",
             ["hp"] = Hp(state),
@@ -109,7 +111,9 @@ public static class EventHooks
             ["damageSlots"] = slot == DamageSlots.Count ? slot : 0,
             ["support"] = 1,
             ["deck"] = state.Players.Sum(p => p.PlayerCombatState?.AllCards?.Count() ?? 0)
-        });
+        };
+        if (RunHealth.Enabled && fightKey != null) start["key"] = fightKey;   // lets the self-check spot a fight recorded twice
+        EventLog.Add("fight0", start);
         Snapshot(state, "fight0");
     });
 
@@ -565,6 +569,7 @@ public static class EventCombatEnd
     public static void Postfix(ICombatState combatState)
     {
         EventHooks.FightEnd(combatState);
+        EventLog.Verify(runEnded: false);
         RunCheckpoint.Save();
     }
 }

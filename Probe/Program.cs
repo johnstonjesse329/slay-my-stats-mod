@@ -9,6 +9,9 @@ namespace SlayMyStats.Probe;
 ///   SlayMyStatsProbe config <folder>
 ///       Read the upload settings (config.json) in the folder as the mod does, creating it if missing.
 ///
+///   SlayMyStatsProbe health
+///       Self-test of the debug health checks (RunHealth) on made-up event logs. Needs no game or Steam.
+///
 ///   SlayMyStatsProbe ticket
 ///       Ask Steam for a ticket and say whether one came back. Sends nothing anywhere.
 ///
@@ -34,6 +37,8 @@ public static class Program
                               $"shareIds={settings.ShareMultiplayerIds} error={settings.Error ?? "none"} notice={UploadSettings.Notice ?? "none"}");
             return 0;
         }
+
+        if (args is ["health"]) return Health();
 
         if (args is ["ticket"])
         {
@@ -76,6 +81,37 @@ public static class Program
                                 "       SlayMyStatsProbe upload <endpoint> <file.run>... [--as <steamid>]\n" +
                                 "       SlayMyStatsProbe backfill <endpoint> <steam folder>");
         return 2;
+    }
+
+    /// <summary>Feeds the debug self-check a clean run, then a save-and-resume that recorded a fight twice and one
+    /// that never closed, and fails unless it flags exactly those.</summary>
+    private static int Health()
+    {
+        static string[] Run(Action<Action<string>> script)
+        {
+            List<string> found = [];
+            RunHealth.Enabled = true;
+            RunHealth.Log = m => found.Add(m);
+            EventLog.Reset();
+            script(key =>
+            {
+                EventLog.NewFight();
+                EventLog.Add("fight0", new() { ["key"] = key });
+                EventLog.Add("play1");
+            });
+            return found.ToArray();
+        }
+
+        string[] clean = Run(fight => { fight("a"); EventLog.Add("fight1"); fight("b"); EventLog.Add("fight1"); EventLog.Verify(true); });
+        string[] twice = Run(fight => { fight("a"); EventLog.Add("fight1"); fight("a"); EventLog.Add("fight1"); EventLog.Verify(true); });
+        string[] open = Run(fight => { fight("a"); EventLog.Verify(true); });
+
+        bool ok = clean.Length == 0
+                  && twice.Length == 1 && twice[0].Contains("duplicate-fight")
+                  && open.Length == 1 && open[0].Contains("fight-unclosed");
+        Console.WriteLine($"clean: {clean.Length} findings; repeated fight: {string.Join("|", twice)}; unclosed: {string.Join("|", open)}");
+        Console.WriteLine(ok ? "health checks OK" : "health checks WRONG");
+        return ok ? 0 : 1;
     }
 
     private static string? Take(List<string> rest, string flag)

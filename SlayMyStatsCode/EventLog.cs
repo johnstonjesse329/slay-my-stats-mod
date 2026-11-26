@@ -71,6 +71,7 @@ public static class EventLog
         int start = Entries.FindLastIndex(e => e.Fight == _fight && e.Kind == "fight0");
         if (start < 0) return;
         if (start < _saved) _rewrite = true;
+        RunHealth.Note("resume-dropped-fight", $"fight {_fight} was recorded before the save and again after; kept once");
         Entries.RemoveRange(start, Entries.Count - start);
         _fight--;
         _truncated = false;
@@ -92,8 +93,10 @@ public static class EventLog
                 Args = (JsonObject)e["a"]!.DeepClone()
             });
         }
+        RunHealth.Restore(telemetry["health"] as JsonObject);
         if (Entries.Count == 0) return;
         _saved = inFile ? Entries.Count : 0;
+        RunHealth.Note("resumed", $"{Entries.Count} events restored from the checkpoint");
         _seq = Entries[^1].Seq;
         _fight = Entries.Any(e => e.Kind == "fight0") ? Entries[^1].Fight : -1;
         _truncated = (bool?)telemetry["truncated"] ?? false;
@@ -105,6 +108,7 @@ public static class EventLog
         if (Entries.Count >= MaxEvents)
         {
             _truncated = true;
+            RunHealth.Note("truncated", $"stopped recording at {MaxEvents} events");
             return;
         }
         if (CurrentAction.Value is int action)
@@ -124,10 +128,50 @@ public static class EventLog
 
     /// <summary>Called when a hook itself fails: the log stops for this run rather
     /// than repeating the failure every event, and the game never sees it.</summary>
-    public static void Fail() => _broken = true;
+    public static void Fail()
+    {
+        _broken = true;
+        RunHealth.Note("hook-failed", $"recording stopped after {Entries.Count} events");
+    }
+
+    /// <summary>Debug only: looks the log over for the faults a save and resume can leave (a fight recorded twice,
+    /// a fight that never closed, events out of order) and hands each to <see cref="RunHealth"/>. Safe to run
+    /// after every fight: a finding is reported once.</summary>
+    public static void Verify(bool runEnded)
+    {
+        if (!RunHealth.Enabled || Entries.Count == 0) return;
+        HashSet<string> keys = [];
+        long previous = 0;
+        bool open = false, started = false;
+        int fight = -1;
+        foreach (Entry e in Entries)
+        {
+            if (e.Seq <= previous) RunHealth.Note("seq-order", $"event {e.Seq} follows {previous}");
+            previous = e.Seq;
+            switch (e.Kind)
+            {
+                case "fight0":
+                    if (open) RunHealth.Note("fight-unclosed", $"fight {fight} never ended before the next began");
+                    if (e.Args["key"] is JsonValue k && !keys.Add(k.ToString()))
+                        RunHealth.Note("duplicate-fight", $"fight {e.Fight} repeats {k}");
+                    open = started = true;
+                    fight = e.Fight;
+                    break;
+                case "fight1":
+                    if (!open) RunHealth.Note("fight-end-orphan", $"fight {e.Fight} ended without a start");
+                    open = false;
+                    break;
+                default:
+                    if (!started) RunHealth.Note("event-before-fight", e.Kind);
+                    break;
+            }
+        }
+        if (runEnded && open) RunHealth.Note("fight-unclosed", $"fight {fight} never ended");
+    }
 
     public static void Reset()
     {
+        RunHealth.Reset();
         Entries.Clear();
         _seq = 0;
         _fight = -1;
@@ -178,6 +222,8 @@ public static class EventLog
                 ["a"] = e.Args.DeepClone()
             });
         }
-        return new JsonObject { ["v"] = SchemaVersion, ["log"] = log, ["truncated"] = _truncated };
+        JsonObject run = new() { ["v"] = SchemaVersion, ["log"] = log, ["truncated"] = _truncated };
+        if (RunHealth.Take(Entries.Count) is { } health) run["health"] = health;
+        return run;
     }
 }

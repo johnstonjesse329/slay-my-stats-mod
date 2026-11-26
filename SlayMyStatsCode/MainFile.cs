@@ -48,6 +48,9 @@ public partial class MainFile : Node
             // Reads (and, if missing, creates) the player's upload settings now, so a mistake in them is reported at launch.
             UploadSettings.Read(userDir, message => Logger.Info(message));
             ModConfig? config = ModConfig.Load(userDir, modDir, message => Logger.Info(message));
+            RunHealth.Enabled = ModConfig.DebugEnabled(userDir, modDir);
+            RunHealth.Log = message => Logger.Info(message);
+            if (RunHealth.Enabled) Logger.Info("Debug is on: health checks run and their findings upload with each run.");
             foreach ((string name, string url) in config?.Endpoints ?? [])
             {
                 // Separate queues, so a site that is down or says no never holds runs back from the others.

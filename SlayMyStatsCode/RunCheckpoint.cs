@@ -54,7 +54,7 @@ internal static class RunCheckpoint
         }
     }
 
-    internal static void FightStarted(IRunState state, string encounter)
+    internal static string? FightStarted(IRunState state, string encounter)
     {
         try
         {
@@ -65,10 +65,12 @@ internal static class RunCheckpoint
             if (_lastFight == key) EventLog.DropLastFight();
             _lastFight = key;
             if (state is RunState live && coord != null) MapLog.Visit(live);
+            return key;
         }
         catch (Exception e)
         {
             MainFile.Logger.Error($"Could not prepare combat checkpoint: {e}");
+            return null;
         }
     }
 
@@ -79,13 +81,15 @@ internal static class RunCheckpoint
         {
             // A write that failed may have left the log short, so the next one replaces it.
             (string lines, bool whole) = EventLog.TakeUnsaved(Interlocked.Exchange(ref _writeFailed, 0) == 1);
-            string meta = new JsonObject
+            JsonObject small = new()
             {
                 ["maps"] = MapLog.Take(),
                 ["lastFight"] = _lastFight,
                 ["truncated"] = EventLog.Truncated,
                 ["mods"] = mods?.DeepClone()
-            }.ToJsonString();
+            };
+            if (RunHealth.Take(EventLog.Count) is { } health) small["health"] = health;     // debug only
+            string meta = small.ToJsonString();
             if (lines.Length == 0 && !whole && meta == _lastMeta) return;
             _lastMeta = meta;
             string path = _path;

@@ -28,6 +28,7 @@ public static class RunEndPatch
             string json = JsonSerializationUtility.ToJson(history);
             RunCheckpoint.EnsureLoaded(history.StartTime);
             JsonArray mods = LoadedMods();
+            EventLog.Verify(runEnded: true);
             JsonObject? telemetry = EventLog.Take();
             JsonArray? maps = MapLog.Take();
             RunCheckpoint.Save(mods);
