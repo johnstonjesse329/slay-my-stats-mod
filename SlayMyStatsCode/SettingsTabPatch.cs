@@ -23,7 +23,7 @@ public static class SettingsTabPatch
         ("showCardStats", "Card and relic stats",
             "When on, card and relic tips show pick rates, win rates and pairs with your deck."),
         ("showRunStrength", "Run strength",
-            "When on, your fights are compared with winners': turns and damage taken."),
+            "When on, projects your current strength by floor vs winning runs on average."),
         ("showSynergyHints", "Synergy hints",
             "When on, card tips show what a card gives your deck or wants from it."),
     ];
