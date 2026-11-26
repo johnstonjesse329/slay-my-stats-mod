@@ -3,6 +3,9 @@ using System.Text.Json.Nodes;
 
 namespace SlayMyStats.SlayMyStatsCode;
 
+/// <summary>One player's damage to enemies over a run.</summary>
+public sealed record Dealt(int Total, int BiggestHit);
+
 /// <summary>
 /// Everything the game does, one line per event, recorded as it happens.
 ///
@@ -124,6 +127,29 @@ public static class EventLog
             Kind = kind,
             Args = args ?? []
         });
+    }
+
+    /// <summary>
+    /// What the player in <paramref name="slot"/> has dealt to enemies this run, counted as the site's run records
+    /// count it: the total includes damage to Block and never overkill; the biggest hit is one card's, overkill
+    /// included (0 with no card hit). A pet's hits aren't the player's. Null unless the log has all
+    /// <paramref name="fights"/> fights of the run, as a total missing some would mislead.
+    /// </summary>
+    public static Dealt? DealtBy(int slot, int fights)
+    {
+        if (_broken || _truncated || Entries.Count(e => e.Kind == "fight0") < fights) return null;
+        int total = 0, biggest = 0;
+        foreach (Entry e in Entries)
+        {
+            JsonObject a = e.Args;
+            if (e.Kind != "hit" || (string?)a["by"] != "P" || (int?)a["sourceSlot"] != slot ||
+                (bool?)a["enemy"] == false || (string?)a["t"] is "P" or "Osty" or "Byrdpip") continue;
+            int dealt = (int?)a["total"] ?? 0;
+            total += dealt;
+            if (a["card"] is JsonValue card && card.ToString().Length > 0)
+                biggest = Math.Max(biggest, dealt + ((int?)a["ovk"] ?? 0));
+        }
+        return new Dealt(total, biggest);
     }
 
     /// <summary>Called when a hook itself fails: the log stops for this run rather
