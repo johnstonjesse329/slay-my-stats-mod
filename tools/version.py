@@ -6,11 +6,11 @@ tools/version.py — Give every pushed mod change its own version.
 
 `push` writes the next free version into SlayMyStats.json, commits it, tags the commit
 with the version and pushes branch and tag together. N is one counter for all branches:
-the remote's tags say which numbers are taken. A commit that already carries its version
-is pushed as it is.
+the remote's tags say which numbers are taken. A commit whose mod is the same as the
+build its version names is pushed as it is.
 
-githooks/pre-push runs `hook`, which refuses a branch push that changes the mod without
-that tag. Changes to docs, tools, hooks and the probe don't need a version.
+githooks/pre-push runs `hook`, which refuses a branch push whose mod differs from the commit
+tagged with its version. Changes to docs, tools, hooks and the probe don't need a version.
 """
 import argparse
 import json
@@ -66,15 +66,12 @@ def changed(old: str, new: str) -> list:
     return git("diff", "--name-only", "--no-renames", old, new).splitlines()
 
 
-def needs_version(remote: str, local: str, old: str) -> bool:
-    """Whether pushing local over old (ZERO: a new branch) sends a mod change."""
-    if old == ZERO:
-        # Nothing to compare with: only a commit the remote already has is exempt.
-        return not git("branch", "-r", "--list", f"{remote}/*", "--contains", local)
+def unchanged_since(tagged: str, commit: str) -> bool:
+    """Whether commit holds the same mod as the commit that carries its version."""
     try:
-        return any(map(shipped, changed(old, local)))
+        return not any(map(shipped, changed(tagged, commit)))
     except subprocess.CalledProcessError:
-        return True  # the remote's tip isn't here, so it can't be compared
+        return False  # the tagged commit isn't here, so it can't be compared
 
 
 def check(remote: str, lines: list) -> list:
@@ -82,8 +79,8 @@ def check(remote: str, lines: list) -> list:
     refs = [line.split() for line in lines if line.strip()]
     pushed_tags = {r[2].removeprefix("refs/tags/"): r[1] for r in refs if r[2].startswith("refs/tags/")}
     problems, taken = [], None
-    for _, local, ref, old in refs:
-        if not ref.startswith("refs/heads/") or local == ZERO or not needs_version(remote, local, old):
+    for _, local, ref, _ in refs:
+        if not ref.startswith("refs/heads/") or local == ZERO:
             continue
         version = version_at(local)
         if taken is None:
@@ -91,9 +88,10 @@ def check(remote: str, lines: list) -> list:
         tagged = taken.get(version)
         if tagged is None and version in pushed_tags:
             tagged = git("rev-parse", f"{pushed_tags[version]}^{{commit}}")
-        if tagged != local:
-            why = "is already used by another commit" if tagged else "isn't tagged on this commit"
-            problems.append(f"{ref.removeprefix('refs/heads/')}: version {version} {why}.")
+        if not tagged:
+            problems.append(f"{ref.removeprefix('refs/heads/')}: version {version} isn't tagged.")
+        elif not unchanged_since(tagged, local):
+            problems.append(f"{ref.removeprefix('refs/heads/')}: version {version} is already used by another build.")
     return problems
 
 
@@ -102,14 +100,14 @@ def push(remote: str, branch: str, release: bool) -> None:
         sys.exit("Commit your changes first.")
     head = git("rev-parse", "HEAD")
     tags = remote_tags(remote)
-    old = git("ls-remote", remote, f"refs/heads/{branch}").split("\t")[0] or ZERO
-    if old != ZERO:
-        git("fetch", "--quiet", remote, branch)
     current = version_at(head)
     kind = RELEASE if release else TEST
     refspecs = [f"HEAD:refs/heads/{branch}"]
     new_tag = None
-    if not (tags.get(current) == head and kind.match(current)) and (release or needs_version(remote, head, old)):
+    # A commit already carrying its version, or one that left the mod alone, goes as it is.
+    # A release always gets a release number.
+    kept = current in tags and unchanged_since(tags[current], head) and (not release or kind.match(current))
+    if not kept:
         local_tags = git("tag", "--list").splitlines()
         new_tag = next_version(set(tags) | set(local_tags), release)
         with open(MANIFEST, encoding="utf-8", newline="") as f:
@@ -128,8 +126,7 @@ def push(remote: str, branch: str, release: bool) -> None:
         if new_tag:
             git("tag", "--delete", new_tag)
         sys.exit("Push failed. Nothing changed on the remote; fix the cause and run this again.")
-    print(f"Pushed {branch} as {new_tag or current}." if new_tag or kind.match(current)
-          else f"Pushed {branch}; no mod change, so no new version.")
+    print(f"Pushed {branch} as {new_tag or current}.")
 
 
 def main(argv=None) -> None:
