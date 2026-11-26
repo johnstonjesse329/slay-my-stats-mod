@@ -21,6 +21,9 @@ public static class LiveRun
     /// <summary>The snapshot for this run. One downloaded mid-run waits for the next, unless there was none.</summary>
     public static StatsPack? Pack => _pack ??= _store?.Current;
 
+    /// <summary>The newest snapshot, for screens that belong to no run.</summary>
+    public static StatsPack? LatestPack => _store?.Current;
+
     /// <summary>What the player wants shown, as their config says now; null before <see cref="Watch"/>.</summary>
     public static DisplaySettings? Settings => _settings?.Invoke();
 
