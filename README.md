@@ -3,24 +3,34 @@
 A Slay the Spire 2 mod that uploads each run to [slay-my-stats.com](https://slay-my-stats.com) when it ends,
 so you don't have to sign in and pick your history folder.
 
+## In-game stats
+
+- **Card and relic stats** show pick and win rates in tooltips, including the Card Compendium and Relic Collection.
+- **Synergy hints** show what a card or relic gives your deck or wants from it, with counts for matching cards where available.
+- **Event stats** show pick and win rates for event choices where data is available.
+- **Run strength** compares damage taken and turns with past wins. Hover over the top-bar indicator for a fight and act breakdown, total damage, and your biggest hit.
+
+Open **Settings → Slay My Stats** to toggle each display or pause uploads. The main menu shows the loaded version.
+
 ## Install
 
-Subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3838251909).
+Steam Workshop updates are on hold while Mega Crit works through Steam’s temporary manual approval requirement.
+Get the current version from GitHub or [upload your run history by hand](https://slay-my-stats.com/upload).
+The [Steam Workshop listing](https://steamcommunity.com/sharedfiles/filedetails/?id=3838251909) is still the place to subscribe.
 
-### Manual install (Windows)
+### Manual install
 
-If the Workshop isn't working, install the mod by hand:
-
-The quick way: download `SlayMyStats-v0.0.6.zip` from the [latest release](https://github.com/johnstonjesse329/slay-my-stats-mod/releases/latest), extract it, close the game and double-click `Install.cmd`. Or do it yourself:
+If you subscribed on the Workshop, unsubscribe before switching to the manual copy.
 
 1. Close the game.
-2. Download `SlayMyStats-v0.0.6.zip` from the [latest release](https://github.com/johnstonjesse329/slay-my-stats-mod/releases/latest) and extract it.
-3. In Steam, right-click Slay the Spire 2, then choose Manage > Browse local files.
+2. Under **Assets** on the [latest release](https://github.com/johnstonjesse329/slay-my-stats-mod/releases/latest), download the ZIP named `SlayMyStats-v<version>.zip` and extract it.
+3. On Windows, double-click `Install.cmd` in the extracted folder and skip to step 6. To copy the files yourself, right-click Slay the Spire 2 in Steam and choose **Manage → Browse local files**.
 4. Open the `mods` folder, creating it if it isn't there.
 5. Copy the `SlayMyStats` folder into it. You should end up with `mods\SlayMyStats\SlayMyStats.dll`.
 6. Start the game. If it asks about loading mods, agree, and restart it if needed.
 
-Manual installs don't update themselves: to update, replace the folder with the one from a newer release. To uninstall, delete it. Once the Workshop works again, delete it and use the subscription instead.
+To update a manual install, close the game and repeat these steps with the newer ZIP. To uninstall it, remove
+`mods/SlayMyStats`. If you switch back to the Workshop, remove the manual copy before subscribing.
 
 ## What it sends
 
@@ -95,7 +105,7 @@ Steam Cloud may keep its own copy of your saves. The backups folder is not synce
 
 ## Turning it off
 
-Switch it off in the game's mod list, or unsubscribe.
+Switch it off in the game's mod list, unsubscribe from the Workshop, or remove the manually installed folder.
 
 ## Development
 
