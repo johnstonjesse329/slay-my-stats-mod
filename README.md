@@ -7,6 +7,19 @@ so you don't have to sign in and pick your history folder.
 
 Subscribe on the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3838251909).
 
+### Manual install (Windows)
+
+If the Workshop isn't working, install the mod by hand:
+
+1. Close the game.
+2. Download `SlayMyStats-v0.0.6.zip` from the [latest release](https://github.com/johnstonjesse329/slay-my-stats-mod/releases/latest) and extract it.
+3. In Steam, right-click Slay the Spire 2, then choose Manage > Browse local files.
+4. Open the `mods` folder, creating it if it isn't there.
+5. Copy the `SlayMyStats` folder into it. You should end up with `mods\SlayMyStats\SlayMyStats.dll`.
+6. Start the game. If it asks about loading mods, agree, and restart it if needed.
+
+Manual installs don't update themselves: to update, replace the folder with the one from a newer release. To uninstall, delete it. Once the Workshop works again, delete it and use the subscription instead.
+
 ## What it sends
 
 Your Steam ID, a short-lived Steam ticket that says this Steam account is playing, and each run as the game
