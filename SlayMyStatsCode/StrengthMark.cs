@@ -21,6 +21,7 @@ public static class StrengthMarkPatch
     private static readonly Color Win = new("5cba7d"), Mid = new("e0c468"), Loss = new("e05c5c"), Ink = new("0d0c1a");
 
     private const float Radius = 22;
+    private const float TipTextWidth = 560;
 
     [HarmonyPostfix]
     public static void Postfix(NTopBar __instance)
@@ -71,8 +72,11 @@ public static class StrengthMarkPatch
             try
             {
                 if (strength == null) return;
-                NHoverTipSet.CreateAndShow(mark, ModTip.Create("Slay My Stats", Words(strength)))
-                    ?.SetGlobalPosition(mark.GlobalPosition + new Vector2(0, mark.Size.Y + 20));
+                NHoverTipSet? tips =
+                    NHoverTipSet.CreateAndShow(mark, ModTip.Create("Slay My Stats", Words(strength)));
+                if (tips == null) return;
+                Widen(tips);
+                tips.SetGlobalPosition(mark.GlobalPosition + new Vector2(0, mark.Size.Y + 20));
             }
             catch (Exception e)
             {
@@ -123,29 +127,45 @@ public static class StrengthMarkPatch
         mark.DrawPolyline([.. arrow, arrow[0]], Ink, 1, antialiased: true);
     }
 
+    /// <summary>The game's tip is too narrow for the fight table, so this one is widened.</summary>
+    private static void Widen(NHoverTipSet tips)
+    {
+        Control tip = tips.GetNode("textHoverTipContainer").GetChild<Control>(0);
+        RichTextLabel text = tip.GetNode<RichTextLabel>("%Description");
+        text.AddThemeConstantOverride("table_h_separation", 18);
+        text.CustomMinimumSize = new Vector2(TipTextWidth, 0);
+        tip.ResetSize();
+    }
+
     private static string Words(Strength strength)
     {
         ActReading act = strength.Current;
-        List<string> lines =
-        [
-            $"Act {act.Act + 1}: {Word(act.Verdict)}",
-            $"Damage taken: [blue]{Whole(act.Taken)}[/blue] vs {Whole(act.WinTaken)}",
-            $"Fight turns: [blue]{Whole(act.Turns)}[/blue] vs {Tenth(act.WinTurns)}",
-            "",
-            "Each fight (damage, turns):",
-        ];
-        lines.AddRange(strength.Fights.Select(f =>
-            $"{Name(f.Encounter)}: [blue]{Whole(f.Taken)}[/blue] vs {Whole(f.WinTaken)}, " +
-            $"[blue]{f.Turns}[/blue] vs {Tenth(f.WinTurns)}"));
+        List<string> cells = Row("Fight", "Damage", "Avg win", "Turns", "Avg win");
+        foreach (FightLine f in strength.Fights)
+        {
+            cells.AddRange(Row(Name(f.Encounter), Blue(Whole(f.Taken)), Whole(f.WinTaken),
+                Blue(f.Turns.ToString(CultureInfo.InvariantCulture)), Tenth(f.WinTurns)));
+        }
+        cells.AddRange(Row("[b]Act total[/b]", Blue(Whole(act.Taken)), Whole(act.WinTaken),
+            Blue(Whole(act.Turns)), Tenth(act.WinTurns)));
+
+        string words = $"Act {act.Act + 1}: {Word(act.Verdict)}
+[table=5]{string.Concat(cells)}[/table]";
         if (strength.Earlier.Count > 0)
         {
-            lines.Add("");
-            lines.AddRange(strength.Earlier.Select(a => $"Act {a.Act + 1}: {Word(a.Verdict)}"));
+            words += "
+
+" + string.Join("
+", strength.Earlier.Select(a => $"Act {a.Act + 1}: {Word(a.Verdict)}"));
         }
-        lines.Add("");
-        lines.Add("\"vs\" is the average win.");
-        return string.Join("\n", lines);
+        return words;
     }
+
+    /// <summary>One table row: the name on the left, the numbers on the right.</summary>
+    private static List<string> Row(string name, params string[] numbers) =>
+        [$"[cell]{name}[/cell]", .. numbers.Select(n => $"[cell][right]{n}[/right][/cell]")];
+
+    private static string Blue(string value) => $"[blue]{value}[/blue]";
 
     private static string Word(string verdict) => verdict == Ruler.Ahead ? "[green]Hype[/green]"
         : verdict == Ruler.Behind ? "[red]Rough[/red]" : "[gold]Mid[/gold]";
@@ -153,7 +173,7 @@ public static class StrengthMarkPatch
     private static string Whole(double value) =>
         Math.Round(value, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture);
 
-    private static string Tenth(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
+    private static string Tenth(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
 
     private static string Name(string encounter) =>
         ModelDb.GetByIdOrNull<EncounterModel>(ModelId.Deserialize(encounter))?.Title.GetFormattedText() ?? encounter;
