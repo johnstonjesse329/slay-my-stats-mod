@@ -1,5 +1,8 @@
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization;
+using MegaCrit.Sts2.Core.Nodes.HoverTips;
 using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
 
 namespace SlayMyStats.SlayMyStatsCode;
@@ -12,13 +15,17 @@ namespace SlayMyStats.SlayMyStatsCode;
 [HarmonyPatch(typeof(NSettingsTabManager), nameof(NSettingsTabManager._Ready))]
 public static class SettingsTabPatch
 {
-    // Labels are placeholders until approved.
-    private static readonly (string Key, string Label)[] Rows =
+    // Labels and hints are drafts until approved.
+    private static readonly (string Key, string Label, string Hint)[] Rows =
     [
-        ("uploadsEnabled", "Upload runs"),
-        ("showCardStats", "Card and relic stats"),
-        ("showRunStrength", "Run strength"),
-        ("showSynergyHints", "Synergy hints"),
+        ("uploadsEnabled", "Upload runs",
+            "When on, your runs are uploaded to Slay My Stats. Runs skipped while it's off are sent once it's back on."),
+        ("showCardStats", "Card and relic stats",
+            "When on, card and relic tips show pick rates, win rates and pairs with your deck."),
+        ("showRunStrength", "Run strength",
+            "When on, your fights are compared with winners': turns and damage taken."),
+        ("showSynergyHints", "Synergy hints",
+            "When on, card tips show what a card gives your deck or wants from it."),
     ];
 
     [HarmonyPostfix]
@@ -86,7 +93,7 @@ public static class SettingsTabPatch
         Node divider = generalContent.GetNode("ScreenshakeDivider");
         string path = Path.Combine(OS.GetUserDataDir(), MainFile.ModId, ModConfig.UserFileName);
         List<ModTickbox> boxes = [];
-        foreach ((string key, string text) in Rows)
+        foreach ((string key, string text, string hint) in Rows)
         {
             if (boxes.Count > 0) content.AddChild(divider.Duplicate());
 
@@ -103,6 +110,7 @@ public static class SettingsTabPatch
             ModTickbox box = ModTickbox.Create(tickboxScene, path, key);
             row.AddChild(box);
             boxes.Add(box);
+            AddHint(row, text, hint);
             content.AddChild(row);
         }
 
@@ -112,5 +120,16 @@ public static class SettingsTabPatch
             if (panel.Visible) boxes.ForEach(box => box.Show(path));
         };
         return panel;
+    }
+
+    /// <summary>The game's own setting hint: hovering the row shows it beside the screen, as Fast Mode's does.</summary>
+    private static void AddHint(Control row, string title, string description)
+    {
+        // A tip's title can only come from the game's text tables, so it is replaced on a tip made from one of them.
+        object tip = new HoverTip(new LocString("settings_ui", "FASTMODE"), description);
+        AccessTools.PropertySetter(typeof(HoverTip), nameof(HoverTip.Title)).Invoke(tip, [title]);
+        row.MouseEntered += () => NHoverTipSet.CreateAndShow(row, (IHoverTip)tip)
+            ?.SetGlobalPosition(NSettingsScreen.GetSettingTipPosition(row));
+        row.MouseExited += () => NHoverTipSet.Remove(row);
     }
 }
