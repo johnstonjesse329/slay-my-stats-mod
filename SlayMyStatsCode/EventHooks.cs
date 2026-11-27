@@ -214,7 +214,8 @@ public static class EventHooks
         EventLog.Add("draw1", new JsonObject
         {
             ["card"] = CardId(card), ["hand"] = fromHandDraw,
-            ["targetSlot"] = Slot(card?.Owner.Creature), ["instance"] = SupportTrace.ObjectId(card)
+            ["targetSlot"] = Slot(card?.Owner.Creature), ["instance"] = SupportTrace.ObjectId(card),
+            ["playerTurn"] = card?.Owner.PlayerCombatState?.TurnNumber,
         }));
 
     public static void CardPlayed(CardPlay? play) => Safe(() =>
@@ -310,7 +311,8 @@ public static class EventHooks
         EventLog.Add("blk", new JsonObject
         {
             ["c"] = Name(creature), ["n"] = (int)amount, ["targetSlot"] = Slot(creature),
-            ["sourceSlot"] = Slot(cardSource?.Owner.Creature), ["card"] = CardId(cardSource)
+            ["sourceSlot"] = Slot(cardSource?.Owner.Creature), ["card"] = CardId(cardSource),
+            ["playerTurn"] = creature?.Player?.PlayerCombatState?.TurnNumber,
         }));
 
     public static void BlockBroken(Creature? target, Creature? breaker) => Safe(() =>

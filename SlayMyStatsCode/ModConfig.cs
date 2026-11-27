@@ -28,6 +28,10 @@ public sealed class ModConfig
     [JsonPropertyName("endpoints")]
     public Dictionary<string, string> Endpoints { get; set; } = [];
 
+    /// <summary>Optional named endpoint for feedback, independent of the upload switch.</summary>
+    [JsonPropertyName("feedbackSite")]
+    public string? FeedbackSite { get; set; }
+
     /// <summary>
     /// Whether to lift a modded profile to the standard one's progress (see ProgressCarryPatch). On unless a
     /// config file sets "carry_progress": false; the player's file wins over the shipped one.
@@ -80,7 +84,7 @@ public sealed class ModConfig
     /// The shipped config with the player's laid over it; null (with the reason logged) if uploads should stay
     /// off.
     /// </summary>
-    public static ModConfig? Load(string userFolder, string modFolder, Action<string> log)
+    public static ModConfig? Load(string userFolder, string modFolder, Action<string> log, bool forFeedback = false)
     {
         string[] paths = [Path.Combine(modFolder, FileName), Path.Combine(userFolder, UserFileName)];
         string[] found = paths.Where(File.Exists).ToArray();
@@ -125,7 +129,7 @@ public sealed class ModConfig
             return null;
         }
 
-        if (config is not { Enabled: true })
+        if (config == null || (!config.Enabled && !forFeedback))
         {
             log($"Uploads are turned off in {path}.");
             return null;

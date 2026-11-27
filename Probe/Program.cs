@@ -166,28 +166,60 @@ public static class Program
         void Hit(int slot, int total, int over, string? card, string by = "P", string target = "Nibbit") =>
             EventLog.Add("hit", new() { ["by"] = by, ["t"] = target, ["sourceSlot"] = slot, ["enemy"] = target != "P",
                 ["card"] = card, ["total"] = total, ["ovk"] = over });
-        Hit(0, 12, 9, "CARD.STRIKE");
+        Hit(0, 12, 9, "CARD.STRIKE");           // legacy log entry without an action
+        void StartCard(int action)
+        {
+            EventLog.CurrentAction.Value = null;
+            EventLog.Add("action0", new() { ["id"] = action, ["kind"] = "card",
+                ["model"] = "CARD.MULTI", ["sourceSlot"] = 0 });
+            EventLog.CurrentAction.Value = action;
+        }
+        StartCard(1);
+        Hit(0, 10, 0, "CARD.MULTI");
+        Hit(0, 10, 0, "CARD.MULTI", target: "Other enemy");
+        Hit(0, 8, 2, "CARD.MULTI");
         Hit(0, 30, 0, null);                    // a Power's damage: in the total, not a card's hit
+        StartCard(2);
+        Hit(0, 10, 0, "CARD.MULTI");           // same card, separate play
+        EventLog.CurrentAction.Value = null;
         Hit(1, 50, 0, "CARD.STRIKE");           // the other player's
         Hit(0, 40, 0, "CARD.STRIKE", target: "P");
         Hit(0, 40, 0, null, by: "Osty");
         void Play(int slot, int turn) => EventLog.Add("play1", new() { ["sourceSlot"] = slot, ["playerTurn"] = turn });
         void Energy(int slot, int amount, int? turn = null) =>
             EventLog.Add("energy+", new() { ["targetSlot"] = slot, ["n"] = amount, ["playerTurn"] = turn });
+        void Draw(int slot, int? turn = null) =>
+            EventLog.Add("draw1", new() { ["targetSlot"] = slot, ["playerTurn"] = turn });
+        void Block(int slot, int amount, string target = "P") =>
+            EventLog.Add("blk", new() { ["targetSlot"] = slot, ["n"] = amount, ["c"] = target });
         EventLog.Add("erese", new() { ["targetSlot"] = 0, ["turn"] = 1, ["energy"] = 3 });
         Energy(0, 2);                           // old log: use this player's last turn marker
         Play(0, 1);
         Play(0, 1);
         Energy(0, 3, 1);
+        Draw(0);
+        Draw(0);
+        Draw(1);
+        Block(0, 9);
+        Block(0, 12);
+        Block(1, 100);
+        Block(0, 100, "Osty");
         Play(1, 2);
         Energy(1, 100, 2);                     // the other player's extra turn
         Play(0, 2);
         Energy(0, 4);
+        Draw(0, 2);
+        Block(0, 11);
         EventLog.NewFight();
         EventLog.Add("fight0");
         Play(0, 1);                            // turn one of a different fight
+        StartCard(1);                          // IDs can be reused after save and resume
+        Hit(0, 10, 0, "CARD.MULTI");
+        EventLog.CurrentAction.Value = null;
         Energy(0, 4, 1);
-        var expected = new CombatRecords(42, 21, 2, 5);
+        Draw(0, 1);
+        Block(0, 13);
+        var expected = new CombatRecords(90, 30, 2, 5, 21, 2, 80);
         bool records = EventLog.RecordsFor(0, 2) == expected && EventLog.RecordsFor(0, 3) == null;
         var checkpoint = EventLog.Take();
         EventLog.Reset();

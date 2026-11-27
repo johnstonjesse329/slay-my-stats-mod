@@ -1,11 +1,14 @@
 using System.Text.Json.Nodes;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace SlayMyStats.SlayMyStatsCode;
+
+internal sealed record RunChoices(int Elites, int Rested, int Smithed, int Removed, int SkippedRewardFloors);
 
 /// <summary>
 /// The run being played, for the in-game stats: the snapshot it holds on to, and the game's run state in the shape
@@ -51,6 +54,30 @@ public static class LiveRun
         if (_finishedRecords is { } finished) return finished;
         RunCheckpoint.EnsureLoaded();       // after a quit, the log comes back from the checkpoint
         return EventLog.RecordsFor(LocalPlayer(), fights);
+    }
+
+    internal static RunChoices? ChoicesSoFar()
+    {
+        if (RunManager.Instance.DebugOnlyGetState() is not { } state || state.Players.Count == 0)
+            return null;
+
+        ulong playerId = state.Players[LocalPlayer()].NetId;
+        int elites = 0, rested = 0, smithed = 0, removed = 0, skippedRewardFloors = 0;
+        foreach (var point in state.MapPointHistory.SelectMany(act => act))
+        {
+            elites += point.Rooms.Count(room => room.RoomType == RoomType.Elite && room.TurnsTaken > 0);
+            if (point.PlayerStats.FirstOrDefault(stats => stats.PlayerId == playerId) is not { } player) continue;
+            removed += player.CardsRemoved.Count;
+            rested += player.RestSiteChoices.Count(choice => choice == "HEAL");
+            smithed += player.RestSiteChoices.Count(choice => choice == "SMITH");
+
+            // History stores the individual cards without grouping them into reward screens.
+            // Match the website: a non-shop floor with a card offer and no pick.
+            if (point.MapPointType != MapPointType.Shop &&
+                player.CardChoices.Count > 0 && player.CardChoices.All(choice => !choice.wasPicked))
+                skippedRewardFloors++;
+        }
+        return new RunChoices(elites, rested, smithed, removed, skippedRewardFloors);
     }
 
     /// <summary>Keep the records available on the victory screen after the upload takes the event log.</summary>

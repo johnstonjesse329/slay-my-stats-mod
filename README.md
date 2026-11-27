@@ -8,9 +8,16 @@ so you don't have to sign in and pick your history folder.
 - **Card and relic stats** show pick and win rates in tooltips, including the Card Compendium and Relic Collection.
 - **Synergy hints** show what a card or relic gives your deck or wants from it, with counts for matching cards where available.
 - **Event stats** show pick and win rates for event choices where data is available.
-- **Run strength** compares damage taken and turns with past wins. Hover over the top-bar indicator for a fight and act breakdown, total damage, and your biggest hit.
+- **Run strength** compares damage taken and turns with past wins. Hover over the top-bar indicator for a fight and act
+  breakdown, total damage, your biggest hit, and single-turn records for cards played, bonus energy, Block gained, and cards drawn.
 
 Open **Settings → Slay My Stats** to toggle each display or pause uploads. The main menu shows the loaded version.
+
+Use **Send feedback** in that tab, or click the Run Strength icon to report a fight. The form shows the loaded
+mod version and any fight details it will include. Steam identifies your account when you press Send, and the form
+returns a feedback number. You can send feedback even with automatic run uploads paused.
+
+For test builds, set `"feedbackSite": "gamma"` to send reports to the configured Gamma inbox.
 
 ## Install
 

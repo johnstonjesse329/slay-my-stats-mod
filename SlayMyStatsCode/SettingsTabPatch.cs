@@ -114,6 +114,9 @@ public static class SettingsTabPatch
             AddHint(row, text, hint);
             content.AddChild(row);
         }
+        Button feedback = new() { Text = "Send feedback", CustomMinimumSize = new Vector2(0, 48) };
+        feedback.Pressed += () => ModFeedback.Open(panel);
+        content.AddChild(feedback);
 
         // Each time the tab opens it shows what the file says now, hand edits included.
         panel.VisibilityChanged += () =>

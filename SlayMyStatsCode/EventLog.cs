@@ -4,7 +4,9 @@ using System.Text.Json.Nodes;
 namespace SlayMyStats.SlayMyStatsCode;
 
 /// <summary>One player's damage and best single turns over a run.</summary>
-public sealed record CombatRecords(int Damage, int BiggestHit, int MostCardsPlayed, int MostBonusEnergy);
+public sealed record CombatRecords(
+    int Damage, int BiggestHit, int MostCardsPlayed, int MostBonusEnergy, int MostBlockGained, int MostCardsDrawn,
+    int MaxTurnDamage);
 
 /// <summary>
 /// Everything the game does, one line per event, recorded as it happens.
@@ -54,6 +56,21 @@ public static class EventLog
     public static int Count => Entries.Count;
 
     public static bool Truncated => _truncated;
+
+    internal static string? LastPlayedCard(string encounter, int slot)
+    {
+        if (_broken || _truncated) return null;
+        string? card = null;
+        for (int i = Entries.Count - 1; i >= 0; i--)
+        {
+            Entry entry = Entries[i];
+            if (entry.Kind == "fight0")
+                return (string?)entry.Args["enc"] == encounter ? card : null;
+            if (card == null && entry.Kind == "play1" && (int?)entry.Args["sourceSlot"] == slot)
+                card = (string?)entry.Args["card"];
+        }
+        return null;
+    }
 
     /// <summary>The game's own turn number, stamped on every event so an event that
     /// arrives outside any call that names a turn still says which one it was in.</summary>
@@ -130,17 +147,19 @@ public static class EventLog
     }
 
     /// <summary>
-    /// What the player in <paramref name="slot"/> has dealt to enemies this run, counted as the site's run records
-    /// count it: the total includes damage to Block and never overkill; the biggest hit is one card's, overkill
-    /// included (0 with no card hit). A pet's hits aren't the player's. Per-turn records count resolved plays
-    /// and actual energy gains (ordinary refill uses a different event). Null with an incomplete log.
+    /// What the player in <paramref name="slot"/> has dealt to enemies this run.
+    /// The total includes damage to Block and excludes overkill. The biggest card play includes overkill
+    /// and sums its hits across targets. A pet's hits aren't the player's. Per-turn records count resolved plays,
+    /// bonus energy, Block gained by the player, and draws including the opening hand. Null with an incomplete log.
     /// </summary>
     public static CombatRecords? RecordsFor(int slot, int fights)
     {
         if (_broken || _truncated) return null;
-        int damage = 0, biggest = 0, mostCards = 0, mostEnergy = 0;
+        int damage = 0, biggest = 0, mostCards = 0, mostEnergy = 0, mostBlock = 0, mostDraws = 0;
         int fightCount = 0, playerTurn = 1;
-        Dictionary<(int Fight, int Turn), (int Cards, int Energy)> turns = [];
+        Dictionary<(int Fight, int Turn), (int Cards, int Energy, int Block, int Draws)> turns = [];
+        Dictionary<(int Fight, int Turn), int> turnDamage = [];
+        Dictionary<int, (string Card, int Damage)> cardActions = [];
         foreach (Entry e in Entries)
         {
             JsonObject a = e.Args;
@@ -149,32 +168,61 @@ public static class EventLog
                 case "fight0":
                     fightCount++;
                     playerTurn = 1;
+                    // Action IDs can restart when a saved run is resumed.
+                    cardActions.Clear();
+                    break;
+                case "action0" when (string?)a["kind"] == "card" && (int?)a["sourceSlot"] == slot &&
+                                    (int?)a["id"] is int action && (string?)a["model"] is string model:
+                    cardActions[action] = (model, 0);
                     break;
                 case "erese" or "turn0" or "extra" when (int?)a["targetSlot"] == slot:
                     if ((int?)a["turn"] is > 0 and var turn) playerTurn = turn;
                     break;
                 case "play1" when fightCount > 0 && (int?)a["sourceSlot"] == slot:
                 case "energy+" when fightCount > 0 && (int?)a["targetSlot"] == slot:
-                    // Older checkpoints have a per-player turn on plays and turn markers, but not on gains.
+                  case "draw1" when fightCount > 0 && (int?)a["targetSlot"] == slot:
+                  case "blk" when fightCount > 0 && (int?)a["targetSlot"] == slot && (string?)a["c"] == "P":
+                    // Older checkpoints can use the last per-player turn marker for unstamped events.
                     if ((int?)a["playerTurn"] is > 0 and var stampedTurn) playerTurn = stampedTurn;
                     var key = (e.Fight, playerTurn);
-                    var (cards, energy) = turns.GetValueOrDefault(key);
-                    if (e.Kind == "play1") cards++;
-                    else energy += (int?)a["n"] ?? 0;
-                    turns[key] = (cards, energy);
+                    var (cards, energy, block, draws) = turns.GetValueOrDefault(key);
+                    switch (e.Kind)
+                    {
+                        case "play1": cards++; break;
+                        case "energy+": energy += (int?)a["n"] ?? 0; break;
+                        case "blk": block += (int?)a["n"] ?? 0; break;
+                        case "draw1": draws++; break;
+                    }
+                    turns[key] = (cards, energy, block, draws);
                     mostCards = Math.Max(mostCards, cards);
                     mostEnergy = Math.Max(mostEnergy, energy);
+                    mostBlock = Math.Max(mostBlock, block);
+                    mostDraws = Math.Max(mostDraws, draws);
                     break;
                 case "hit" when (string?)a["by"] == "P" && (int?)a["sourceSlot"] == slot &&
                                 (bool?)a["enemy"] != false && (string?)a["t"] is not ("P" or "Osty" or "Byrdpip"):
                     int dealt = (int?)a["total"] ?? 0;
                     damage += dealt;
-                    if (a["card"] is JsonValue card && card.ToString().Length > 0)
-                        biggest = Math.Max(biggest, dealt + ((int?)a["ovk"] ?? 0));
+                    var damageTurn = (e.Fight, playerTurn);
+                    turnDamage[damageTurn] = turnDamage.GetValueOrDefault(damageTurn) + dealt;
+                    if ((string?)a["card"] is { Length: > 0 } card)
+                    {
+                        int strike = dealt + ((int?)a["ovk"] ?? 0);
+                        // Older logs can identify the card without identifying the play.
+                        if ((int?)a["action"] is int hitAction &&
+                            cardActions.TryGetValue(hitAction, out var play) && play.Card == card)
+                        {
+                            strike += play.Damage;
+                            cardActions[hitAction] = (card, strike);
+                        }
+                        biggest = Math.Max(biggest, strike);
+                    }
                     break;
             }
         }
-        return fightCount == 0 || fightCount < fights ? null : new CombatRecords(damage, biggest, mostCards, mostEnergy);
+        return fightCount == 0 || fightCount < fights
+            ? null : new CombatRecords(damage, biggest, mostCards, mostEnergy, mostBlock, mostDraws,
+                turnDamage.Values.DefaultIfEmpty().Max());
     }
 
     /// <summary>Called when a hook itself fails: the log stops for this run rather
